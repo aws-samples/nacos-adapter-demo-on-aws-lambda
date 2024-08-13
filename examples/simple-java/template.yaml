@@ -33,6 +33,9 @@ Resources:
       Runtime: java17
       MemorySize: 1024
       Timeout: 30
+      Environment:
+        Variables:
+          AWS_LAMBDA_EXEC_WRAPPER: /var/task/run.sh
       Events:
         HelloWorld:
           Type: Api
