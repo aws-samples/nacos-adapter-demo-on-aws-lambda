@@ -1,0 +1,54 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  simple-java
+
+  Sample SAM Template for simple-java
+
+Parameters:
+  EFSAccessPointArn:
+    Type: String
+  EFSMountPath:
+    Type: String
+    Default: /mnt/efs
+  SecurityGroups:
+    Type: CommaDelimitedList
+  SubnetIds:
+    Type: CommaDelimitedList
+
+Resources:
+  NacosAdapterLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      ContentUri: ..
+    Metadata:
+      BuildMethod: makefile
+      BuildArchitecture: x86_64
+
+  HelloWorldFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: HelloWorldFunction
+      Handler: helloworld.App::handleRequest
+      Runtime: java21
+      MemorySize: 1024
+      Timeout: 30
+      Events:
+        HelloWorld:
+          Type: Api
+          Properties:
+            Path: /hello
+            Method: get
+      Layers:
+        - !Ref NacosAdapterLayer
+      FileSystemConfigs:
+        - Arn: !Ref EFSAccessPointArn
+          LocalMountPath: !Ref EFSMountPath
+      VpcConfig:
+        SecurityGroupIds: !Ref SecurityGroups
+        SubnetIds: !Ref SubnetIds
+
+Outputs:
+  HelloWorldApi:
+    Description: "API Gateway endpoint URL for Prod stage for Hello World function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
