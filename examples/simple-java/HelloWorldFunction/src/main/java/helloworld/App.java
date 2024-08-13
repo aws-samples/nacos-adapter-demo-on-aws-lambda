@@ -10,20 +10,31 @@ import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
 
+import software.amazon.cloudwatchlogs.emf.logger.MetricsLogger;
+import software.amazon.cloudwatchlogs.emf.model.Unit;
+import software.amazon.lambda.powertools.metrics.Metrics;
+import software.amazon.lambda.powertools.metrics.MetricsUtils;
+
 public class App implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
   ConfigService configService;
+  MetricsLogger metricsLogger = MetricsUtils.metricsLogger();
 
   public App() throws NacosException {
     var properties = new Properties();
     properties.put("serverAddr", "localhost:8848");
-    this.configService = NacosFactory.createConfigService(properties);
+    configService = NacosFactory.createConfigService(properties);
   }
 
+  @Metrics(namespace = "NacosAdapterTest", service = "simple-java")
   public APIGatewayProxyResponseEvent handleRequest(final APIGatewayProxyRequestEvent input, final Context context) {
     var response = new APIGatewayProxyResponseEvent();
 
     try {
-      final var config = this.getConfig();
+      var start = System.currentTimeMillis();
+      final var config = getConfig();
+      var elapsed = System.currentTimeMillis() - start;
+
+      metricsLogger.putMetric("GetConfigLatency", elapsed, Unit.MILLISECONDS);
 
       return response
           .withStatusCode(200)
@@ -36,6 +47,6 @@ public class App implements RequestHandler<APIGatewayProxyRequestEvent, APIGatew
   }
 
   String getConfig() throws NacosException {
-    return this.configService.getConfig("test", "DEFAULT_GROUP", 5000);
+    return configService.getConfig("test", "DEFAULT_GROUP", 5000);
   }
 }
