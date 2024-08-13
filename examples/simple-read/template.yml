@@ -13,14 +13,6 @@ Parameters:
     Type: CommaDelimitedList
 
 Resources:
-  NacosAdapterLayer:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      ContentUri: ../..
-    Metadata:
-      BuildMethod: makefile
-      BuildArchitecture: x86_64
-
   HelloWorldFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -66,8 +58,6 @@ Resources:
           Properties:
             Path: /hello
             Method: get
-      Layers:
-        - !Ref NacosAdapterLayer
       FileSystemConfigs:
         - Arn: !Ref EFSAccessPointArn
           LocalMountPath: !Ref EFSMountPath
