@@ -20,10 +20,10 @@ Resources:
       InlineCode: |
         const fs = require('fs')
         exports.handler = async function(event) {
-          const start = Date.now();
-          const config = fs.readFileSync('/mnt/efs/nacos/DEFAULT_GROUP/test', 'utf-8')
-          const end = Date.now()
-          const elapse = end - start;
+          let start = Date.now();
+          const mtime = fs.statSync('/mnt/efs/nacos/DEFAULT_GROUP/test');
+          let end = Date.now()
+          let elapse = end - start;
           console.log(JSON.stringify({
             "_aws": {
               "Timestamp": end,
@@ -33,7 +33,7 @@ Resources:
                   "Dimensions": [["functionVersion"]],
                   "Metrics": [
                     {
-                      "Name": "elapse",
+                      "Name": "statElapse",
                       "Unit": "Milliseconds",
                       "StorageResolution": 60
                     }
@@ -42,7 +42,32 @@ Resources:
               ]
             },
             "functionVersion": "$LATEST",
-            "elapse": elapse,
+            "statElapse": elapse,
+          }))
+
+          start = Date.now();
+          const config = fs.readFileSync('/mnt/efs/nacos/DEFAULT_GROUP/test', 'utf-8')
+          end = Date.now()
+          elapse = end - start;
+          console.log(JSON.stringify({
+            "_aws": {
+              "Timestamp": end,
+              "CloudWatchMetrics": [
+                {
+                  "Namespace": "nacos-adapter",
+                  "Dimensions": [["functionVersion"]],
+                  "Metrics": [
+                    {
+                      "Name": "readElapse",
+                      "Unit": "Milliseconds",
+                      "StorageResolution": 60
+                    }
+                  ]
+                }
+              ]
+            },
+            "functionVersion": "$LATEST",
+            "readElapse": elapse,
           }))
           return {
             statusCode: 200,
