@@ -20,7 +20,7 @@ Resources:
   NacosAdapterLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
-      ContentUri: ..
+      ContentUri: ../..
     Metadata:
       BuildMethod: makefile
       BuildArchitecture: x86_64
