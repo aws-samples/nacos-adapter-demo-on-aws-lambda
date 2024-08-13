@@ -11,3 +11,7 @@ Resources:
     Metadata:
       BuildMethod: makefile
       BuildArchitecture: x86_64
+
+Outputs:
+  NacosAdapterLayerArn:
+    Value: !Ref NacosAdapterLayer
