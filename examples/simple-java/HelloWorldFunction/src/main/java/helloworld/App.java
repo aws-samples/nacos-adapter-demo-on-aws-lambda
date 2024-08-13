@@ -1,7 +1,5 @@
 package helloworld;
 
-import java.util.Properties;
-
 import com.alibaba.nacos.api.NacosFactory;
 import com.alibaba.nacos.api.config.ConfigService;
 import com.alibaba.nacos.api.exception.NacosException;
@@ -20,9 +18,7 @@ public class App implements RequestHandler<APIGatewayProxyRequestEvent, APIGatew
   MetricsLogger metricsLogger = MetricsUtils.metricsLogger();
 
   public App() throws NacosException {
-    var properties = new Properties();
-    properties.put("serverAddr", "localhost:8848");
-    configService = NacosFactory.createConfigService(properties);
+    configService = NacosFactory.createConfigService("localhost:8848");
   }
 
   @Metrics(namespace = "NacosAdapterTest", service = "simple-java")
