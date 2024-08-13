@@ -30,7 +30,7 @@ Resources:
     Properties:
       CodeUri: HelloWorldFunction
       Handler: helloworld.App::handleRequest
-      Runtime: java21
+      Runtime: java17
       MemorySize: 1024
       Timeout: 30
       Events:
