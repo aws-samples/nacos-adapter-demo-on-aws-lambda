@@ -1,0 +1,81 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  EFSAccessPointArn:
+    Type: String
+  EFSMountPath:
+    Type: String
+    Default: /mnt/efs
+  SecurityGroups:
+    Type: CommaDelimitedList
+  SubnetIds:
+    Type: CommaDelimitedList
+
+Resources:
+  NacosAdapterLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      ContentUri: ../..
+    Metadata:
+      BuildMethod: makefile
+      BuildArchitecture: x86_64
+
+  HelloWorldFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.handler
+      InlineCode: |
+        const fs = require('fs')
+        exports.handler = async function(event) {
+          const start = Date.now();
+          const config = fs.readFileSync('/mnt/efs/nacos/DEFAULT_GROUP/test', 'utf-8')
+          const end = Date.now()
+          const elapse = end - start;
+          console.log(JSON.stringify({
+            "_aws": {
+              "Timestamp": end,
+              "CloudWatchMetrics": [
+                {
+                  "Namespace": "nacos-adapter",
+                  "Dimensions": [["functionVersion"]],
+                  "Metrics": [
+                    {
+                      "Name": "elapse",
+                      "Unit": "Milliseconds",
+                      "StorageResolution": 60
+                    }
+                  ]
+                }
+              ]
+            },
+            "functionVersion": "$LATEST",
+            "elapse": elapse,
+          }))
+          return {
+            statusCode: 200,
+            body: config
+          }
+        };
+      Runtime: nodejs20.x
+      MemorySize: 1024
+      Timeout: 30
+      Events:
+        HelloWorld:
+          Type: Api
+          Properties:
+            Path: /hello
+            Method: get
+      Layers:
+        - !Ref NacosAdapterLayer
+      FileSystemConfigs:
+        - Arn: !Ref EFSAccessPointArn
+          LocalMountPath: !Ref EFSMountPath
+      VpcConfig:
+        SecurityGroupIds: !Ref SecurityGroups
+        SubnetIds: !Ref SubnetIds
+
+Outputs:
+  HelloWorldApi:
+    Description: "API Gateway endpoint URL for Prod stage for Hello World function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
