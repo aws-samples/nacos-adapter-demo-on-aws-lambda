@@ -1,4 +1,4 @@
-use axum::{extract::Query, routing::get, Router};
+use axum::{extract::Query, http::StatusCode, routing::get, Router};
 use lambda_extension::{tracing, Extension};
 use std::{
   collections::HashMap,
@@ -21,7 +21,12 @@ async fn start_nacos_adapter() {
       let group = params.get("group").unwrap();
       let data_id = params.get("dataId").unwrap();
       let path = format!("{}/{}/{}", prefix, group, data_id);
-      async move { fs::read_to_string(path).await.unwrap() }
+      async move {
+        fs::read_to_string(&path)
+          .await
+          .map(|config| (StatusCode::OK, config))
+          .map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))
+      }
     }),
   );
 
