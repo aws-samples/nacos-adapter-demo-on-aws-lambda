@@ -34,7 +34,7 @@ async fn start_nacos_adapter() {
         };
 
         let tenant = params.get("tenant").map(|s| s as &str).unwrap_or("public");
-        let path = format!("{}{}.{}.{}", prefix, tenant, group, data_id);
+        let path = format!("{}{}/{}/{}", prefix, tenant, group, data_id);
 
         match cache.get(path).await {
           Ok(config) => (StatusCode::OK, (*config).clone()),
