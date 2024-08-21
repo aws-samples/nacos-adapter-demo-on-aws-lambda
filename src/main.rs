@@ -26,14 +26,18 @@ async fn start_nacos_adapter() {
     "/nacos/v1/cs/configs",
     get(
       move |Query(params): Query<HashMap<String, String>>| async move {
-        let Some(group) = params.get("group") else {
+        let Some(group) = params.get("group").filter(|s| s.len() > 0) else {
           return (StatusCode::BAD_REQUEST, "group is required".to_string());
         };
-        let Some(data_id) = params.get("dataId") else {
+        let Some(data_id) = params.get("dataId").filter(|s| s.len() > 0) else {
           return (StatusCode::BAD_REQUEST, "dataId is required".to_string());
         };
 
-        let tenant = params.get("tenant").map(|s| s as &str).unwrap_or("public");
+        let tenant = params
+          .get("tenant")
+          .filter(|s| s.len() > 0)
+          .map(|s| s as &str)
+          .unwrap_or("public");
         let path = format!("{}{}/{}/{}", prefix, tenant, group, data_id);
 
         match cache.get(path).await {
