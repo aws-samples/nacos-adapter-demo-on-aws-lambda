@@ -20,23 +20,28 @@ async fn start_nacos_adapter() {
     .and_then(|s| s.parse().ok())
     .unwrap_or(64);
 
-  let cache = Cache::new(cache_size);
+  let mut cache = Cache::new(cache_size);
 
   let app = Router::new().route(
     "/nacos/v1/cs/configs",
-    get(move |Query(params): Query<HashMap<String, String>>| {
-      let group = params.get("group").unwrap();
-      let data_id = params.get("dataId").unwrap();
-      let tenant = params.get("tenant").map(|s| s as &str).unwrap_or("");
-      let path = format!("{}/{}.{}.{}", prefix, tenant, group, data_id);
-      let mut cache = cache.clone();
-      async move {
+    get(
+      move |Query(params): Query<HashMap<String, String>>| async move {
+        let Some(group) = params.get("group") else {
+          return (StatusCode::BAD_REQUEST, "group is required".to_string());
+        };
+        let Some(data_id) = params.get("dataId") else {
+          return (StatusCode::BAD_REQUEST, "dataId is required".to_string());
+        };
+
+        let tenant = params.get("tenant").map(|s| s as &str).unwrap_or("");
+        let path = format!("{}/{}.{}.{}", prefix, tenant, group, data_id);
+
         match cache.get(path).await {
           Ok(config) => (StatusCode::OK, (*config).clone()),
           Err(e) => (StatusCode::NOT_FOUND, e.to_string()),
         }
-      }
-    }),
+      },
+    ),
   );
 
   let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port))
