@@ -1,5 +1,9 @@
 use axum::{extract::Query, http::StatusCode, routing::get, Router};
-use lambda_extension::{tracing, Extension};
+use lambda_extension::{
+  tracing::{self, error},
+  Extension,
+};
+use serde_json::json;
 use shinkuro::Cache;
 use std::{
   collections::HashMap,
@@ -24,36 +28,81 @@ async fn start_nacos_adapter() {
 
   let cache = Cache::new(cache_size);
 
-  let config_getter = |ns: &'static str| {
-    let prefix = prefix.clone();
-    let mut cache = cache.clone();
-    move |Query(params): Query<HashMap<String, String>>| async move {
-      let Some(group) = params.get("group").filter(|s| s.len() > 0) else {
-        return (StatusCode::BAD_REQUEST, "group is required".to_string());
-      };
-      let Some(data_id) = params.get("dataId").filter(|s| s.len() > 0) else {
-        return (StatusCode::BAD_REQUEST, "dataId is required".to_string());
-      };
-
-      // TODO: "tag" in nacos api v2 is not supported yet
-
-      let tenant = params
-        .get(ns)
-        .filter(|s| s.len() > 0)
-        .map(|s| s as &str)
-        .unwrap_or("public");
-      let path = format!("{}{}/{}/{}", prefix, tenant, group, data_id);
-
-      match cache.get(path).await {
-        Ok(config) => (StatusCode::OK, (*config).clone()),
-        Err(e) => (StatusCode::NOT_FOUND, e.to_string()),
-      }
-    }
-  };
-
   let app = Router::new()
-    .route("/nacos/v1/cs/configs", get(config_getter("tenant")))
-    .route("/nacos/v2/cs/config", get(config_getter("namespaceId")));
+    .route("/nacos/v1/cs/configs", get({
+      let prefix = prefix.clone();
+      let mut cache = cache.clone();
+      move |Query(params): Query<HashMap<String, String>>| async move {
+        let Some(data_id) = params.get("dataId").filter(|s| s.len() > 0) else {
+          return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "caused: Required request parameter &#39;dataId&#39; for method parameter type String is not present;".to_string()
+          );
+        };
+        let Some(group) = params.get("group").filter(|s| s.len() > 0) else {
+          return (
+            StatusCode::INTERNAL_SERVER_ERROR, 
+            "caused: Required request parameter &#39;group&#39; for method parameter type String is not present;".to_string());
+        };
+  
+        let tenant = params
+          .get("tenant")
+          .filter(|s| s.len() > 0)
+          .map(|s| s as &str)
+          .unwrap_or("public");
+        let path = format!("{}{}/{}/{}", prefix, tenant, group, data_id);
+  
+        match cache.get(path).await {
+          Ok(config) => (StatusCode::OK, (*config).clone()),
+          Err(e) => {
+            error!("failed to get config: {}", e);
+            (StatusCode::NOT_FOUND, "config data not exist".to_string())
+          }
+        }
+      }
+    }))
+    .route("/nacos/v2/cs/config", get({
+      let prefix = prefix.clone();
+      let mut cache = cache.clone();
+      move |Query(params): Query<HashMap<String, String>>| async move {
+        let Some(data_id) = params.get("dataId").filter(|s| s.len() > 0) else {
+          return (
+            StatusCode::BAD_REQUEST, 
+            r#"{"code":10000,"message":"parameter missing","data":"Required request parameter 'dataId' for method parameter type String is not present"}"#.to_string()
+          );
+        };
+        let Some(group) = params.get("group").filter(|s| s.len() > 0) else {
+          return (
+            StatusCode::BAD_REQUEST, 
+            r#"{"code":10000,"message":"parameter missing","data":"Required request parameter 'group' for method parameter type String is not present"}"#.to_string()
+          );
+        };
+  
+        // TODO: "tag" in nacos api v2 is not supported yet
+  
+        let tenant = params
+          .get("namespaceId")
+          .filter(|s| s.len() > 0)
+          .map(|s| s as &str)
+          .unwrap_or("public");
+        let path = format!("{}{}/{}/{}", prefix, tenant, group, data_id);
+  
+        match cache.get(path).await {
+          Ok(config) => (StatusCode::OK, json!({
+            "code": 0,
+            "message": "success",
+            "data": *config
+          }).to_string()),
+          Err(e) => {
+            error!("failed to get config: {}", e);
+            (
+              StatusCode::NOT_FOUND, 
+              r#"{"code":20004,"message":"resource not found","data":"config data not exist"}"#.to_string()
+            )
+          }
+        }
+      }
+    }));
 
   let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port))
     .await
