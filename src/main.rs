@@ -14,7 +14,7 @@ async fn start_nacos_adapter() {
     .and_then(|p| p.parse().ok())
     .unwrap_or(8848);
   let prefix =
-    env::var("AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH").unwrap_or("/mnt/efs/nacos".to_string());
+    env::var("AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH").unwrap_or("/mnt/efs/nacos/".to_string());
   let cache_size = env::var("AWS_LAMBDA_NACOS_ADAPTER_CACHE_SIZE")
     .ok()
     .and_then(|s| s.parse().ok())
@@ -34,7 +34,7 @@ async fn start_nacos_adapter() {
         };
 
         let tenant = params.get("tenant").map(|s| s as &str).unwrap_or("");
-        let path = format!("{}/{}.{}.{}", prefix, tenant, group, data_id);
+        let path = format!("{}{}.{}.{}", prefix, tenant, group, data_id);
 
         match cache.get(path).await {
           Ok(config) => (StatusCode::OK, (*config).clone()),
