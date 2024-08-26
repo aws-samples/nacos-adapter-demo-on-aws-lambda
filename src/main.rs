@@ -1,5 +1,7 @@
+mod cache;
 mod constant;
 
+use crate::cache::Cache;
 use crate::constant::{
   CONFIG_NOT_FOUND_2, DATA_ID_NOT_FOUND_1, DATA_ID_NOT_FOUND_2, GROUP_NOT_FOUND_1,
   GROUP_NOT_FOUND_2,
@@ -16,7 +18,6 @@ use lambda_extension::{
   Extension,
 };
 use serde_json::json;
-use shinkuro::Cache;
 use std::{
   collections::HashMap,
   env,
