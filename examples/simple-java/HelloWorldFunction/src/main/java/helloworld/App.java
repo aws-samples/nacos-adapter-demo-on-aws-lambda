@@ -26,11 +26,8 @@ public class App implements RequestHandler<APIGatewayProxyRequestEvent, APIGatew
     var response = new APIGatewayProxyResponseEvent();
 
     try {
-      var start = System.currentTimeMillis();
       final var config = getConfig();
-      var elapsed = System.currentTimeMillis() - start;
-
-      metricsLogger.putMetric("GetConfigLatency", elapsed, Unit.MILLISECONDS);
+      System.out.println(config);
 
       return response
           .withStatusCode(200)
@@ -43,6 +40,16 @@ public class App implements RequestHandler<APIGatewayProxyRequestEvent, APIGatew
   }
 
   String getConfig() throws NacosException {
-    return configService.getConfig("test", "DEFAULT_GROUP", 5000);
+    System.out.println("Getting config");
+    var start = System.currentTimeMillis();
+
+    var config = configService.getConfig("test", "DEFAULT_GROUP", 5000);
+
+    var elapsed = System.currentTimeMillis() - start;
+    System.out.println("Done");
+
+    metricsLogger.putMetric("GetConfigLatency", elapsed, Unit.MILLISECONDS);
+
+    return config;
   }
 }
