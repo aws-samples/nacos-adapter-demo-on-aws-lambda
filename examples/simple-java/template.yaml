@@ -20,10 +20,7 @@ Resources:
   NacosAdapterLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
-      ContentUri: ../..
-    Metadata:
-      BuildMethod: makefile
-      BuildArchitecture: x86_64
+      ContentUri: ./layer
 
   HelloWorldFunction:
     Type: AWS::Serverless::Function
@@ -35,7 +32,8 @@ Resources:
       Timeout: 30
       Environment:
         Variables:
-          AWS_LAMBDA_EXEC_WRAPPER: /var/task/run.sh
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/entry.sh
+          RUST_LOG: info
       Events:
         HelloWorld:
           Type: Api
