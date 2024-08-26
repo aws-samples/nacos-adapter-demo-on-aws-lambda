@@ -1,3 +1,4 @@
-**/target
-**/samconfig.toml
+target
+samconfig.toml
 .aws-sam
+layer
