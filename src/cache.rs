@@ -3,14 +3,15 @@ use std::{io, os::unix::fs::MetadataExt, sync::Arc};
 use tokio::fs;
 
 #[derive(Clone, Debug)]
-struct CacheValue {
-  mtime: i64,
-  content: Arc<String>,
+pub struct CacheValue {
+  pub mtime: i64,
+  pub content: String,
+  pub md5: String,
 }
 
 #[derive(Clone, Debug)]
 pub struct Cache {
-  data: Inner<String, CacheValue>,
+  data: Inner<String, Arc<CacheValue>>,
 }
 
 impl Cache {
@@ -20,28 +21,25 @@ impl Cache {
     }
   }
 
-  pub async fn get(&mut self, path: String) -> Result<Arc<String>, io::Error> {
-    let time = fs::metadata(&path).await?.mtime();
+  pub async fn get(&mut self, path: String) -> Result<Arc<CacheValue>, io::Error> {
+    let mtime = fs::metadata(&path).await?.mtime();
 
     if let Some(value) = self.data.get(&path).await {
-      if value.mtime == time {
+      if value.mtime == mtime {
         // cache hit
-        return Ok(value.content);
+        return Ok(value);
       }
     }
 
     // cache miss
-    let content = Arc::new(fs::read_to_string(&path).await?);
-    self
-      .data
-      .insert(
-        path,
-        CacheValue {
-          mtime: time,
-          content: content.clone(),
-        },
-      )
-      .await;
-    Ok(content)
+    let content = fs::read_to_string(&path).await?;
+    let md5 = String::from_utf8_lossy(&md5::compute(&content).0).into_owned();
+    let value = Arc::new(CacheValue {
+      mtime,
+      content,
+      md5,
+    });
+    self.data.insert(path, value.clone()).await;
+    Ok(value)
   }
 }

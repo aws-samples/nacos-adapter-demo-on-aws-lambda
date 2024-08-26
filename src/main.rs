@@ -46,7 +46,7 @@ async fn start_nacos_adapter() {
       let path = format!("{}{}/{}/{}", $prefix, $tenant, $group, $data_id);
 
       match $cache.get(path.clone()).await {
-        Ok(config) => Some((*config).clone()),
+        Ok(config) => Some(config.content.clone()),
         Err(e) => {
           error!(path, error = %e.to_string(), "failed to get config");
           None
@@ -113,7 +113,7 @@ async fn start_nacos_adapter() {
               json!({
                 "code": 0,
                 "message": "success",
-                "data": *config
+                "data": config
               })
               .to_string(),
             ),
