@@ -1,4 +1,16 @@
-use axum::{body::Body, extract::Query, http::{ Request, StatusCode}, routing::{any, get}, Router};
+mod constant;
+
+use crate::constant::{
+  CONFIG_NOT_FOUND_2, DATA_ID_NOT_FOUND_1, DATA_ID_NOT_FOUND_2, GROUP_NOT_FOUND_1,
+  GROUP_NOT_FOUND_2,
+};
+use axum::{
+  body::Body,
+  extract::Query,
+  http::{Request, StatusCode},
+  routing::{any, get},
+  Router,
+};
 use lambda_extension::{
   tracing::{self, error},
   Extension,
@@ -26,83 +38,90 @@ async fn start_nacos_adapter() {
     .and_then(|s| s.parse().ok())
     .unwrap_or(64);
 
-  let cache = Cache::new(cache_size);
+  let mut cache = Cache::new(cache_size);
+
+  macro_rules! handle_get_config {
+    ($prefix:expr, $tenant:expr, $group:expr, $data_id:expr, $cache:expr) => {{
+      let path = format!("{}{}/{}/{}", $prefix, $tenant, $group, $data_id);
+
+      match $cache.get(path.clone()).await {
+        Ok(config) => Some((*config).clone()),
+        Err(e) => {
+          error!(path, error = %e.to_string(), "failed to get config");
+          None
+        }
+      }
+    }};
+  }
 
   let app = Router::new()
-    .route("/nacos/v1/cs/configs", get({
-      let prefix = prefix.clone();
-      let mut cache = cache.clone();
-      move |Query(params): Query<HashMap<String, String>>| async move {
-        let Some(data_id) = params.get("dataId").filter(|s| s.len() > 0) else {
-          return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "caused: Required request parameter &#39;dataId&#39; for method parameter type String is not present;".to_string()
-          );
-        };
-        let Some(group) = params.get("group").filter(|s| s.len() > 0) else {
-          return (
-            StatusCode::INTERNAL_SERVER_ERROR, 
-            "caused: Required request parameter &#39;group&#39; for method parameter type String is not present;".to_string());
-        };
-  
-        let tenant = params
-          .get("tenant")
-          .filter(|s| s.len() > 0)
-          .map(|s| s as &str)
-          .unwrap_or("public");
-        let path = format!("{}{}/{}/{}", prefix, tenant, group, data_id);
-  
-        match cache.get(path.clone()).await {
-          Ok(config) => (StatusCode::OK, (*config).clone()),
-          Err(e) => {
-            error!(path, error = %e.to_string(), "failed to get config");
-            (StatusCode::NOT_FOUND, "config data not exist".to_string())
+    .route(
+      "/nacos/v1/cs/configs",
+      get({
+        let prefix = prefix.clone();
+        let mut cache = cache.clone();
+        move |Query(params): Query<HashMap<String, String>>| async move {
+          let Some(data_id) = params.get("dataId").filter(|s| s.len() > 0) else {
+            return (
+              StatusCode::INTERNAL_SERVER_ERROR,
+              DATA_ID_NOT_FOUND_1.to_string(),
+            );
+          };
+          let Some(group) = params.get("group").filter(|s| s.len() > 0) else {
+            return (
+              StatusCode::INTERNAL_SERVER_ERROR,
+              GROUP_NOT_FOUND_1.to_string(),
+            );
+          };
+
+          let tenant = params
+            .get("tenant")
+            .filter(|s| s.len() > 0)
+            .map(|s| s as &str)
+            .unwrap_or("public");
+
+          match handle_get_config!(prefix, tenant, group, data_id, cache) {
+            Some(config) => (StatusCode::OK, config),
+            None => (StatusCode::NOT_FOUND, "Not Found".to_string()),
           }
         }
-      }
-    }))
-    .route("/nacos/v2/cs/config", get({
-      let prefix = prefix.clone();
-      let mut cache = cache.clone();
-      move |Query(params): Query<HashMap<String, String>>| async move {
-        let Some(data_id) = params.get("dataId").filter(|s| s.len() > 0) else {
-          return (
-            StatusCode::BAD_REQUEST, 
-            r#"{"code":10000,"message":"parameter missing","data":"Required request parameter 'dataId' for method parameter type String is not present"}"#.to_string()
-          );
-        };
-        let Some(group) = params.get("group").filter(|s| s.len() > 0) else {
-          return (
-            StatusCode::BAD_REQUEST, 
-            r#"{"code":10000,"message":"parameter missing","data":"Required request parameter 'group' for method parameter type String is not present"}"#.to_string()
-          );
-        };
-  
-        // TODO: "tag" in nacos api v2 is not supported yet
-  
-        let tenant = params
-          .get("namespaceId")
-          .filter(|s| s.len() > 0)
-          .map(|s| s as &str)
-          .unwrap_or("public");
-        let path = format!("{}{}/{}/{}", prefix, tenant, group, data_id);
-  
-        match cache.get(path.clone()).await {
-          Ok(config) => (StatusCode::OK, json!({
-            "code": 0,
-            "message": "success",
-            "data": *config
-          }).to_string()),
-          Err(e) => {
-            error!(path, error = %e.to_string(), "failed to get config");
-            (
-              StatusCode::NOT_FOUND, 
-              r#"{"code":20004,"message":"resource not found","data":"config data not exist"}"#.to_string()
-            )
+      }),
+    )
+    .route(
+      "/nacos/v2/cs/config",
+      get({
+        move |Query(params): Query<HashMap<String, String>>| async move {
+          let Some(data_id) = params.get("dataId").filter(|s| s.len() > 0) else {
+            return (StatusCode::BAD_REQUEST, DATA_ID_NOT_FOUND_2.to_string());
+          };
+          let Some(group) = params.get("group").filter(|s| s.len() > 0) else {
+            return (StatusCode::BAD_REQUEST, GROUP_NOT_FOUND_2.to_string());
+          };
+
+          // TODO: "tag" in nacos api v2 is not supported yet
+
+          let tenant = params
+            .get("namespaceId")
+            .filter(|s| s.len() > 0)
+            .map(|s| s as &str)
+            .unwrap_or("public");
+
+          match handle_get_config!(prefix, tenant, group, data_id, cache) {
+            Some(config) => (
+              StatusCode::OK,
+              json!({
+                "code": 0,
+                "message": "success",
+                "data": *config
+              })
+              .to_string(),
+            ),
+            None => (StatusCode::NOT_FOUND, CONFIG_NOT_FOUND_2.to_string()),
           }
         }
-      }
-    })).fallback(any(|request: Request<Body>| async move {
+      }),
+    )
+    .fallback(any(|request: Request<Body>| async move {
       error!(uri = %request.uri().to_string(), "unhandled request");
       (StatusCode::NOT_FOUND, "Not Found".to_string())
     }));
