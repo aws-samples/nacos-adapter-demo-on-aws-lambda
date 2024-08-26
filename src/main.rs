@@ -52,10 +52,10 @@ async fn start_nacos_adapter() {
           .unwrap_or("public");
         let path = format!("{}{}/{}/{}", prefix, tenant, group, data_id);
   
-        match cache.get(path).await {
+        match cache.get(path.clone()).await {
           Ok(config) => (StatusCode::OK, (*config).clone()),
           Err(e) => {
-            error!("failed to get config: {}", e);
+            error!(path, error = %e.to_string(), "failed to get config");
             (StatusCode::NOT_FOUND, "config data not exist".to_string())
           }
         }
@@ -87,14 +87,14 @@ async fn start_nacos_adapter() {
           .unwrap_or("public");
         let path = format!("{}{}/{}/{}", prefix, tenant, group, data_id);
   
-        match cache.get(path).await {
+        match cache.get(path.clone()).await {
           Ok(config) => (StatusCode::OK, json!({
             "code": 0,
             "message": "success",
             "data": *config
           }).to_string()),
           Err(e) => {
-            error!("failed to get config: {}", e);
+            error!(path, error = %e.to_string(), "failed to get config");
             (
               StatusCode::NOT_FOUND, 
               r#"{"code":20004,"message":"resource not found","data":"config data not exist"}"#.to_string()
