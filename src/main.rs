@@ -1,4 +1,4 @@
-use axum::{extract::Query, http::StatusCode, routing::get, Router};
+use axum::{body::Body, extract::Query, http::{ Request, StatusCode}, routing::{any, get}, Router};
 use lambda_extension::{
   tracing::{self, error},
   Extension,
@@ -102,6 +102,9 @@ async fn start_nacos_adapter() {
           }
         }
       }
+    })).fallback(any(|request: Request<Body>| async move {
+      error!(uri = %request.uri().to_string(), "unhandled request");
+      (StatusCode::NOT_FOUND, "Not Found".to_string())
     }));
 
   let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port))
