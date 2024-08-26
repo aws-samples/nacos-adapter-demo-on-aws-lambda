@@ -32,7 +32,7 @@ Resources:
       Timeout: 30
       Environment:
         Variables:
-          AWS_LAMBDA_EXEC_WRAPPER: /opt/entry.sh
+          JAVA_TOOL_OPTIONS: -DJM.LOG.PATH=/tmp/nacos/logs -DJM.SNAPSHOT.PATH=/tmp/
           RUST_LOG: info
       Events:
         HelloWorld:
