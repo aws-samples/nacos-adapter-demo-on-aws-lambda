@@ -30,5 +30,5 @@ pub trait ConfigProvider {
     data_id: &str,
     group: &str,
     tenant: Option<&str>,
-  ) -> impl Future<Output = Result<Arc<Config>, Error>>;
+  ) -> impl Future<Output = Result<Arc<Config>, Error>> + Send;
 }
