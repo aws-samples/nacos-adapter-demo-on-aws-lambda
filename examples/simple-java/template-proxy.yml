@@ -39,6 +39,7 @@ Resources:
           NACOS_DATA_ID: !Ref NacosDataId
           NACOS_GROUP: !Ref NacosGroup
           AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS: !Ref NacosServerAddress
+          RUST_LOG: trace
       Events:
         HelloWorld:
           Type: Api

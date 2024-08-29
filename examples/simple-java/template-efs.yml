@@ -33,6 +33,7 @@ Resources:
       Environment:
         Variables:
           JAVA_TOOL_OPTIONS: -DJM.LOG.PATH=/tmp/nacos/logs -DJM.SNAPSHOT.PATH=/tmp/
+          RUST_LOG: trace
       Events:
         HelloWorld:
           Type: Api
