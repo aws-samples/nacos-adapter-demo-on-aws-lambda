@@ -6,7 +6,7 @@ use std::sync::Arc;
 #[derive(Clone, Debug)]
 pub struct ProxyConfigProvider {
   cache: Cache<String, Arc<Config>>,
-  base: String,
+  base: Arc<String>,
   // TODO: add cache timeout
 }
 
@@ -14,7 +14,7 @@ impl ProxyConfigProvider {
   pub fn new(size: u64, addr: String) -> Self {
     ProxyConfigProvider {
       cache: Cache::new(size),
-      base: format!("http://{}/nacos/v1/cs/configs", addr),
+      base: Arc::new(format!("http://{}/nacos/v1/cs/configs", addr)),
     }
   }
 }
