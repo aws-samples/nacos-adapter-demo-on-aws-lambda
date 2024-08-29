@@ -10,7 +10,7 @@ pub struct Config {
 impl Config {
   pub fn new(content: String) -> Self {
     Config {
-      md5: String::from_utf8_lossy(&md5::compute(&content).0).into_owned(),
+      md5: format!("{:x}", md5::compute(&content)),
       content,
     }
   }
