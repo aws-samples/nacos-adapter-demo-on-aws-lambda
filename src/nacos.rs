@@ -12,7 +12,7 @@ use axum::{
   routing::{any, get, post},
   Form, Router,
 };
-use lambda_extension::tracing::error;
+use lambda_extension::tracing::{error, trace};
 use serde::Deserialize;
 use serde_json::json;
 use std::{
@@ -55,14 +55,17 @@ pub async fn start_nacos_adapter(
       'outer: loop {
         tokio::select! {
           target = target_rx.recv() => {
+            trace!("register target: {:?}", target);
             let Some(target) = target else { break };
             targets.insert(target);
           }
           r = refresh_rx.recv() => {
+            trace!("refreshing all targets: {:?}", r);
             let Some(_) = r else { break };
             for target in &targets {
               if let Ok(config) = cp.get(&target.data_id, &target.group, target.tenant.as_ref().map(|s| s as &str)).await {
                 if config_tx.send((target.clone(), config)).is_err() {
+                  trace!("config channel is closed");
                   break 'outer;
                 }
               }
@@ -70,6 +73,7 @@ pub async fn start_nacos_adapter(
           }
         }
       }
+      trace!("target manager is stopped");
     }
   });
 
@@ -158,6 +162,7 @@ pub async fn start_nacos_adapter(
       "/nacos/v1/cs/configs/listener",
       post(
         move |headers: HeaderMap, Form(ListeningConfig { targets })| {
+          trace!(targets, "listening config");
           let mut cp = cp.clone();
           let config_tx = config_tx.clone();
           async move {
