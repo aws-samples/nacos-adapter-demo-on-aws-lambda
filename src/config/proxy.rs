@@ -41,20 +41,19 @@ impl ConfigProvider for ProxyConfigProvider {
     .text()
     .await?;
     let config = Config::new(content);
+
+    // check if cache hit
     let path = format!("{}/{}/{}", tenant.unwrap_or("public"), group, data_id);
     let cache = self.cache.get(&path).await;
     if let Some(cache) = cache {
       if cache.md5() == config.md5() {
-        Ok(cache)
-      } else {
-        let config = Arc::new(config);
-        self.cache.insert(path, config.clone()).await;
-        Ok(config)
+        return Ok(cache);
       }
-    } else {
-      let config = Arc::new(config);
-      self.cache.insert(path, config.clone()).await;
-      Ok(config)
     }
+
+    // cache miss
+    let config = Arc::new(config);
+    self.cache.insert(path, config.clone()).await;
+    Ok(config)
   }
 }
