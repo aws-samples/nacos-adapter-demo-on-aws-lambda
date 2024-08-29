@@ -10,9 +10,10 @@ use axum::{
   extract::Query,
   http::{HeaderMap, Request, StatusCode},
   routing::{any, get, post},
-  Router,
+  Form, Router,
 };
 use lambda_extension::tracing::error;
+use serde::Deserialize;
 use serde_json::json;
 use std::{
   collections::{HashMap, HashSet},
@@ -30,6 +31,12 @@ struct Target {
   pub data_id: String,
   pub group: String,
   pub tenant: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ListeningConfig {
+  #[serde(rename = "Listening-Configs")]
+  targets: String,
 }
 
 pub async fn start_nacos_adapter(
@@ -149,83 +156,80 @@ pub async fn start_nacos_adapter(
     )
     .route(
       "/nacos/v1/cs/configs/listener",
-      post(move |headers: HeaderMap, body: String| {
-        let mut cp = cp.clone();
-        let config_tx = config_tx.clone();
-        async move {
-          if !body.starts_with("Listening-Configs=") {
-            // TODO: checkout the actually nacos response
-            return (StatusCode::BAD_REQUEST, "Bad Request".to_string());
-          }
-
-          let mut update_now = vec![];
-          let mut map = HashMap::new();
-          for (target, md5, raw) in body["Listening-Configs=".len()..].split("%01").map(|s| {
-            let mut parts = s.split("%02");
-            // TODO: better error handling
-            let data_id = parts.next().unwrap();
-            let group = parts.next().unwrap();
-            let md5 = parts.next().unwrap();
-            let tenant = parts.next();
-            (
-              Arc::new(Target {
-                data_id: data_id.to_string(),
-                group: group.to_string(),
-                tenant: tenant.map(|s| s.to_string()),
-              }),
-              md5,
-              s,
-            )
-          }) {
-            // TODO: do this in parallel
-            target_tx.send(target.clone()).await.unwrap();
-            if md5
-              != cp
-                .get(
-                  &target.data_id,
-                  &target.group,
-                  target.tenant.as_ref().map(|s| s as &str),
-                )
-                .await
-                .unwrap()
-                .md5()
-            {
-              update_now.push(raw);
-            }
-            map.insert(target, (md5, raw));
-          }
-
-          if !update_now.is_empty() {
-            return (StatusCode::OK, update_now.join("%01"));
-          }
-
-          let timeout = headers
-            .get("Long-Pulling-Timeout")
-            .and_then(|s| s.to_str().ok())
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(30000);
-          let timeout = sleep(Duration::from_millis(timeout));
-          tokio::pin!(timeout);
-          let mut config_rx = config_tx.subscribe();
-
-          loop {
-            tokio::select! {
-              _ = &mut timeout => {
-                // timeout, nothing is changed
-                return (StatusCode::OK, "".to_string())
+      post(
+        move |headers: HeaderMap, Form(ListeningConfig { targets })| {
+          let mut cp = cp.clone();
+          let config_tx = config_tx.clone();
+          async move {
+            let mut update_now = vec![];
+            let mut map = HashMap::new();
+            for (target, md5, raw) in targets.split('\x01').filter(|s| s.len() > 0).map(|s| {
+              let mut parts = s.split('\x02');
+              // TODO: better error handling
+              let data_id = parts.next().unwrap();
+              let group = parts.next().unwrap();
+              let md5 = parts.next().unwrap();
+              let tenant = parts.next();
+              (
+                Arc::new(Target {
+                  data_id: data_id.to_string(),
+                  group: group.to_string(),
+                  tenant: tenant.map(|s| s.to_string()),
+                }),
+                md5,
+                s,
+              )
+            }) {
+              // TODO: do this in parallel
+              target_tx.send(target.clone()).await.unwrap();
+              if md5
+                != cp
+                  .get(
+                    &target.data_id,
+                    &target.group,
+                    target.tenant.as_ref().map(|s| s as &str),
+                  )
+                  .await
+                  .unwrap()
+                  .md5()
+              {
+                update_now.push(raw);
               }
-              res = config_rx.recv() => {
-                if let Ok((target, config)) = res {
-                  let (md5, raw) = map.get(&target).unwrap();
-                  if md5 != &config.md5() {
-                    return (StatusCode::OK, raw.to_string())
+              map.insert(target, (md5, raw));
+            }
+
+            if !update_now.is_empty() {
+              return (StatusCode::OK, update_now.join("\x01"));
+            }
+
+            let timeout = headers
+              .get("Long-Pulling-Timeout")
+              .and_then(|s| s.to_str().ok())
+              .and_then(|s| s.parse().ok())
+              .unwrap_or(30000);
+            let timeout = sleep(Duration::from_millis(timeout));
+            tokio::pin!(timeout);
+            let mut config_rx = config_tx.subscribe();
+
+            loop {
+              tokio::select! {
+                _ = &mut timeout => {
+                  // timeout, nothing is changed
+                  return (StatusCode::OK, "".to_string())
+                }
+                res = config_rx.recv() => {
+                  if let Ok((target, config)) = res {
+                    let (md5, raw) = map.get(&target).unwrap();
+                    if md5 != &config.md5() {
+                      return (StatusCode::OK, raw.to_string())
+                    }
                   }
                 }
               }
             }
           }
-        }
-      }),
+        },
+      ),
     )
     .fallback(any(|request: Request<Body>| async move {
       error!(uri = %request.uri().to_string(), "unhandled request");
