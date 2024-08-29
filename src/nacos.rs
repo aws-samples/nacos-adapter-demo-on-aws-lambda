@@ -16,6 +16,7 @@ use lambda_extension::tracing::error;
 use serde_json::json;
 use std::{
   collections::{HashMap, HashSet},
+  sync::Arc,
   time::Duration,
 };
 use tokio::{
@@ -24,12 +25,19 @@ use tokio::{
   time::sleep,
 };
 
+#[derive(Debug, Hash, PartialEq, Eq)]
+struct Target {
+  pub data_id: String,
+  pub group: String,
+  pub tenant: Option<String>,
+}
+
 pub async fn start_nacos_adapter(
   listener: TcpListener,
   mut refresh_rx: mpsc::Receiver<()>,
   cp: impl ConfigProvider + Clone + Send + 'static,
 ) {
-  let (target_tx, mut target_rx) = mpsc::channel::<(String, String, Option<String>)>(1);
+  let (target_tx, mut target_rx) = mpsc::channel::<Arc<Target>>(1);
   let (config_tx, _) = broadcast::channel(1);
 
   tokio::spawn({
@@ -37,15 +45,19 @@ pub async fn start_nacos_adapter(
     let config_tx = config_tx.clone();
     async move {
       let mut targets = HashSet::new();
-      loop {
+      'outer: loop {
         tokio::select! {
           target = target_rx.recv() => {
-            targets.insert(target.unwrap());
+            let Some(target) = target else { break };
+            targets.insert(target);
           }
-          _ = refresh_rx.recv() => {
-            for (data_id, group, tenant) in &targets {
-              if let Ok(config) = cp.get(data_id, group, tenant.as_ref().map(|s| s as &str)).await {
-                config_tx.send(((data_id.to_string(), group.to_string(), tenant.clone()), config)).unwrap();
+          r = refresh_rx.recv() => {
+            let Some(_) = r else { break };
+            for target in &targets {
+              if let Ok(config) = cp.get(&target.data_id, &target.group, target.tenant.as_ref().map(|s| s as &str)).await {
+                if config_tx.send((target.clone(), config)).is_err() {
+                  break 'outer;
+                }
               }
             }
           }
@@ -55,7 +67,7 @@ pub async fn start_nacos_adapter(
   });
 
   macro_rules! handle_get_config {
-    ($tenant:expr, $group:expr, $data_id:expr, $cp:expr) => {{
+    ($data_id:expr, $group:expr, $tenant:expr, $cp:expr) => {{
       match $cp.get($data_id, $group, $tenant).await {
         Ok(config) => Some(config.content().to_owned()),
         Err(e) => {
@@ -93,7 +105,7 @@ pub async fn start_nacos_adapter(
             .filter(|s| s.len() > 0)
             .map(|s| s as &str);
 
-          match handle_get_config!(tenant, group, data_id, cp) {
+          match handle_get_config!(data_id, group, tenant, cp) {
             Some(config) => (StatusCode::OK, config.to_string()),
             None => (StatusCode::NOT_FOUND, "Not Found".to_string()),
           }
@@ -113,13 +125,14 @@ pub async fn start_nacos_adapter(
           };
 
           // TODO: "tag" in nacos api v2 is not supported yet
+          // TODO: grpc in nacos api v2 is not supported yet
 
           let tenant = params
             .get("namespaceId")
             .filter(|s| s.len() > 0)
             .map(|s| s as &str);
 
-          match handle_get_config!(tenant, group, data_id, cp) {
+          match handle_get_config!(data_id, group, tenant, cp) {
             Some(config) => (
               StatusCode::OK,
               json!({
@@ -147,29 +160,38 @@ pub async fn start_nacos_adapter(
 
           let mut update_now = vec![];
           let mut map = HashMap::new();
-          for (data_id, group, tenant, md5, raw) in
-            body["Listening-Configs=".len()..].split("%01").map(|s| {
-              let mut parts = s.split("%02");
-              let data_id = parts.next().unwrap();
-              let group = parts.next().unwrap();
-              let md5 = parts.next().unwrap();
-              let tenant = parts.next();
-              (data_id, group, tenant, md5, s)
-            })
-          {
+          for (target, md5, raw) in body["Listening-Configs=".len()..].split("%01").map(|s| {
+            let mut parts = s.split("%02");
+            // TODO: better error handling
+            let data_id = parts.next().unwrap();
+            let group = parts.next().unwrap();
+            let md5 = parts.next().unwrap();
+            let tenant = parts.next();
+            (
+              Arc::new(Target {
+                data_id: data_id.to_string(),
+                group: group.to_string(),
+                tenant: tenant.map(|s| s.to_string()),
+              }),
+              md5,
+              s,
+            )
+          }) {
             // TODO: do this in parallel
-            target_tx
-              .send((
-                data_id.to_string(),
-                group.to_string(),
-                tenant.map(|s| s.to_string()),
-              ))
-              .await
-              .unwrap();
-            if md5 != cp.get(data_id, group, tenant).await.unwrap().md5() {
+            target_tx.send(target.clone()).await.unwrap();
+            if md5
+              != cp
+                .get(
+                  &target.data_id,
+                  &target.group,
+                  target.tenant.as_ref().map(|s| s as &str),
+                )
+                .await
+                .unwrap()
+                .md5()
+            {
               update_now.push(raw);
             }
-            let target = format!("{}/{}/{}", tenant.unwrap_or("public"), group, data_id);
             map.insert(target, (md5, raw));
           }
 
@@ -193,8 +215,8 @@ pub async fn start_nacos_adapter(
                 return (StatusCode::OK, "".to_string())
               }
               res = config_rx.recv() => {
-                if let Ok(((data_id, group, tenant), config)) = res {
-                  let (md5, raw) = map.get(&format!("{}/{}/{}", tenant.as_ref().map(|s| s as &str).unwrap_or("public"), group, data_id)).unwrap();
+                if let Ok((target, config)) = res {
+                  let (md5, raw) = map.get(&target).unwrap();
                   if md5 != &config.md5() {
                     return (StatusCode::OK, raw.to_string())
                   }
