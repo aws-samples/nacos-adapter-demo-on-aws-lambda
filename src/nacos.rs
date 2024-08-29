@@ -16,7 +16,6 @@ use lambda_extension::tracing::error;
 use serde_json::json;
 use std::{
   collections::{HashMap, HashSet},
-  net::{Ipv4Addr, SocketAddrV4},
   time::Duration,
 };
 use tokio::{
@@ -26,7 +25,7 @@ use tokio::{
 };
 
 pub async fn start_nacos_adapter(
-  port: u16,
+  listener: TcpListener,
   mut refresh_rx: mpsc::Receiver<()>,
   cp: impl ConfigProvider + Clone + Send + 'static,
 ) {
@@ -211,8 +210,5 @@ pub async fn start_nacos_adapter(
       (StatusCode::NOT_FOUND, "Not Found".to_string())
     }));
 
-  let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port))
-    .await
-    .unwrap();
   axum::serve(listener, app).await.unwrap();
 }

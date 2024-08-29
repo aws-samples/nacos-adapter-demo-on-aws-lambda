@@ -7,14 +7,16 @@ use crate::{
   nacos::start_nacos_adapter,
 };
 use lambda_extension::{service_fn, tracing, Error, LambdaEvent, NextEvent};
-use std::env;
-use tokio::sync::mpsc;
+use std::{
+  env,
+  net::{Ipv4Addr, SocketAddrV4},
+};
+use tokio::{net::TcpListener, sync::mpsc};
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Error> {
   tracing::init_default_subscriber();
 
-  let (refresh_tx, refresh_rx) = mpsc::channel(1);
   let port = env::var("AWS_LAMBDA_NACOS_ADAPTER_PORT")
     .ok()
     .and_then(|p| p.parse().ok())
@@ -24,9 +26,12 @@ async fn main() {
     .and_then(|s| s.parse().ok())
     .unwrap_or(64);
 
+  let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port)).await?;
+  let (refresh_tx, refresh_rx) = mpsc::channel(1);
+
   if let Ok(origin) = env::var("AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS") {
     tokio::spawn(start_nacos_adapter(
-      port,
+      listener,
       refresh_rx,
       ProxyConfigProvider::new(cache_size, origin),
     ));
@@ -35,7 +40,7 @@ async fn main() {
       env::var("AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH").unwrap_or("/mnt/efs/nacos/".to_string());
 
     tokio::spawn(start_nacos_adapter(
-      port,
+      listener,
       refresh_rx,
       FsConfigProvider::new(cache_size, prefix),
     ));
@@ -47,7 +52,7 @@ async fn main() {
       match event.next {
         NextEvent::Shutdown(_e) => {}
         NextEvent::Invoke(_e) => {
-          refresh_tx.send(()).await.unwrap();
+          refresh_tx.send(()).await?;
           // TODO: wait for refresh done?
         }
       }
@@ -55,5 +60,4 @@ async fn main() {
     }
   }))
   .await
-  .unwrap()
 }
