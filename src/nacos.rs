@@ -52,7 +52,7 @@ pub async fn start_nacos_adapter(
     let config_tx = config_tx.clone();
     async move {
       let mut targets = HashSet::new();
-      'outer: loop {
+      loop {
         tokio::select! {
           target = target_rx.recv() => {
             trace!("register target: {:?}", target);
@@ -64,10 +64,7 @@ pub async fn start_nacos_adapter(
             let Some(_) = r else { break };
             for target in &targets {
               if let Ok(config) = cp.get(&target.data_id, &target.group, target.tenant.as_ref().map(|s| s as &str)).await {
-                if config_tx.send((target.clone(), config)).is_err() {
-                  trace!("config channel is closed");
-                  break 'outer;
-                }
+                config_tx.send((target.clone(), config)).ok();
               }
             }
           }
@@ -164,7 +161,7 @@ pub async fn start_nacos_adapter(
         move |headers: HeaderMap, Form(ListeningConfig { targets })| {
           trace!(targets, "listening config");
           let mut cp = cp.clone();
-          let config_tx = config_tx.clone();
+          let mut config_rx = config_tx.subscribe();
           async move {
             if targets.is_empty() {
               // TODO: checkout the real response of nacos
@@ -222,7 +219,6 @@ pub async fn start_nacos_adapter(
               .unwrap_or(30000);
             let timeout = sleep(Duration::from_millis(timeout));
             tokio::pin!(timeout);
-            let mut config_rx = config_tx.subscribe();
 
             loop {
               tokio::select! {
