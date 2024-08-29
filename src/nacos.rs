@@ -191,17 +191,17 @@ pub async fn start_nacos_adapter(
             }) {
               // TODO: do this in parallel
               target_tx.send(target.clone()).await.unwrap();
-              if md5
-                != cp
-                  .get(
-                    &target.data_id,
-                    &target.group,
-                    target.tenant.as_ref().map(|s| s as &str),
-                  )
-                  .await
-                  .unwrap()
-                  .md5()
-              {
+              let cached = cp
+                .get(
+                  &target.data_id,
+                  &target.group,
+                  target.tenant.as_ref().map(|s| s as &str),
+                )
+                .await
+                .unwrap();
+              let cached_md5 = cached.md5();
+              if md5 != cached_md5 {
+                trace!(md5, cached_md5, "md5 not match");
                 update_now.push(target.clone());
               }
               map.insert(target, md5);
@@ -243,7 +243,9 @@ pub async fn start_nacos_adapter(
                 res = config_rx.recv() => {
                   if let Ok((target, config)) = res {
                     let md5 = map.get(&target).unwrap();
+                    let new_md5 = config.md5();
                     if md5 != &config.md5() {
+                      trace!(md5, new_md5, "md5 not match");
                       // TODO: optimize code, add a method to target
                       let res = format!(
                         "{}%02{}%02{}",
