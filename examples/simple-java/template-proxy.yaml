@@ -1,0 +1,57 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  simple-java
+
+  Sample SAM Template for simple-java
+
+Parameters:
+  SecurityGroups:
+    Type: CommaDelimitedList
+  SubnetIds:
+    Type: CommaDelimitedList
+  NacosServerAddress:
+    Type: String
+  NacosDataId:
+    Type: String
+    Default: test
+  NacosGroup:
+    Type: String
+    Default: DEFAULT_GROUP
+
+Resources:
+  NacosAdapterLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      ContentUri: ./layer
+
+  HelloWorldFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: HelloWorldFunction
+      Handler: helloworld.App::handleRequest
+      Runtime: java17
+      MemorySize: 1024
+      Timeout: 30
+      Environment:
+        Variables:
+          JAVA_TOOL_OPTIONS: -DJM.LOG.PATH=/tmp/nacos/logs -DJM.SNAPSHOT.PATH=/tmp/
+          NACOS_DATA_ID: !Ref NacosDataId
+          NACOS_GROUP: !Ref NacosGroup
+          AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS: !Ref NacosServerAddress
+      Events:
+        HelloWorld:
+          Type: Api
+          Properties:
+            Path: /
+            Method: get
+      Layers:
+        - !Ref NacosAdapterLayer
+      VpcConfig:
+        SecurityGroupIds: !Ref SecurityGroups
+        SubnetIds: !Ref SubnetIds
+
+Outputs:
+  HelloWorldApi:
+    Description: "API Gateway endpoint URL for Prod stage for Hello World function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"

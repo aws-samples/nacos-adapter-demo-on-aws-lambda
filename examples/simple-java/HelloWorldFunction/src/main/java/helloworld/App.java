@@ -1,55 +1,55 @@
 package helloworld;
 
+import java.util.concurrent.Executor;
+
 import com.alibaba.nacos.api.NacosFactory;
 import com.alibaba.nacos.api.config.ConfigService;
+import com.alibaba.nacos.api.config.listener.Listener;
 import com.alibaba.nacos.api.exception.NacosException;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
 
-import software.amazon.cloudwatchlogs.emf.logger.MetricsLogger;
-import software.amazon.cloudwatchlogs.emf.model.Unit;
-import software.amazon.lambda.powertools.metrics.Metrics;
-import software.amazon.lambda.powertools.metrics.MetricsUtils;
-
 public class App implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
   ConfigService configService;
-  MetricsLogger metricsLogger = MetricsUtils.metricsLogger();
+  String config;
 
   public App() throws NacosException {
-    configService = NacosFactory.createConfigService("localhost:8848");
+    var addr = System.getenv("NACOS_SERVER_ADDRESS");
+    if (addr == null)
+      addr = "localhost:8848";
+    var dataId = System.getenv("NACOS_DATA_ID");
+    if (dataId == null)
+      dataId = "test";
+    var group = System.getenv("NACOS_GROUP");
+    if (group == null)
+      group = "DEFAULT_GROUP";
+
+    configService = NacosFactory.createConfigService(addr);
+
+    // get the initial config
+    config = configService.getConfig(dataId, group, 5000);
+    if (config == null)
+      throw new NacosException(NacosException.NOT_FOUND, "Failed to get config");
+
+    // add a listener
+    configService.addListener(dataId, group, new Listener() {
+      @Override
+      public void receiveConfigInfo(String configInfo) {
+        config = configInfo;
+      }
+
+      @Override
+      public Executor getExecutor() {
+        return null;
+      }
+    });
   }
 
-  @Metrics(namespace = "NacosAdapterTest", service = "simple-java")
   public APIGatewayProxyResponseEvent handleRequest(final APIGatewayProxyRequestEvent input, final Context context) {
-    var response = new APIGatewayProxyResponseEvent();
-
-    try {
-      final var config = getConfig();
-      System.out.println(config);
-
-      return response
-          .withStatusCode(200)
-          .withBody(config);
-    } catch (NacosException e) {
-      return response
-          .withBody("error")
-          .withStatusCode(500);
-    }
-  }
-
-  String getConfig() throws NacosException {
-    System.out.println("Getting config");
-    var start = System.currentTimeMillis();
-
-    var config = configService.getConfig("test", "DEFAULT_GROUP", 5000);
-
-    var elapsed = System.currentTimeMillis() - start;
-    System.out.println("Done");
-
-    metricsLogger.putMetric("GetConfigLatency", elapsed, Unit.MILLISECONDS);
-
-    return config;
+    return new APIGatewayProxyResponseEvent()
+        .withStatusCode(200)
+        .withBody(config);
   }
 }

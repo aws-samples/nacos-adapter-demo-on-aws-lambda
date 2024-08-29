@@ -4,6 +4,8 @@ In AWS Lambda only `/tmp` is writable, so you have to configure `JM.LOG.PATH` an
 
 ## Build
 
+### Proxy Mode
+
 Run these commands in the **_root_** folder of the project:
 
 ```sh
@@ -14,7 +16,23 @@ cargo build --release --target x86_64-unknown-linux-musl
 cp ./target/x86_64-unknown-linux-musl/release/aws-lambda-nacos-adapter ./examples/simple-java/layer/extensions/
 
 pushd ./examples/simple-java/
-sam build -u
+sam build -u -t template-proxy.yml
+popd
+```
+
+### EFS Mode
+
+Run these commands in the **_root_** folder of the project:
+
+```sh
+rm -rf ./examples/simple-java/layer/
+mkdir -p ./examples/simple-java/layer/extensions
+
+cargo build --release --target x86_64-unknown-linux-musl
+cp ./target/x86_64-unknown-linux-musl/release/aws-lambda-nacos-adapter ./examples/simple-java/layer/extensions/
+
+pushd ./examples/simple-java/
+sam build -u -t template-efs.yml
 popd
 ```
 
