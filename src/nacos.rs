@@ -173,7 +173,7 @@ pub async fn start_nacos_adapter(
 
             let mut update_now = vec![];
             let mut map = HashMap::new();
-            for (target, md5, raw) in targets.split('\x01').filter(|s| s.len() > 0).map(|s| {
+            for (target, md5) in targets.split('\x01').filter(|s| s.len() > 0).map(|s| {
               let mut parts = s.split('\x02');
               // TODO: better error handling
               let data_id = parts.next().unwrap();
@@ -187,7 +187,6 @@ pub async fn start_nacos_adapter(
                   tenant: tenant.map(|s| s.to_string()),
                 }),
                 md5,
-                s,
               )
             }) {
               // TODO: do this in parallel
@@ -203,13 +202,27 @@ pub async fn start_nacos_adapter(
                   .unwrap()
                   .md5()
               {
-                update_now.push(raw);
+                update_now.push(target.clone());
               }
-              map.insert(target, (md5, raw));
+              map.insert(target, md5);
             }
 
             if !update_now.is_empty() {
-              return (StatusCode::OK, update_now.join("\x01"));
+              let res = update_now
+                .iter()
+                .map(|t| {
+                  format!(
+                    "{}%02{}%02{}",
+                    t.data_id,
+                    t.group,
+                    t.tenant.as_ref().map(|s| s as &str).unwrap_or("")
+                  )
+                })
+                .collect::<Vec<_>>()
+                .join("%01")
+                + "%01";
+              trace!(res, "immediate update");
+              return (StatusCode::OK, res);
             }
 
             let timeout = headers
@@ -224,13 +237,22 @@ pub async fn start_nacos_adapter(
               tokio::select! {
                 _ = &mut timeout => {
                   // timeout, nothing is changed
+                  trace!("listener timeout");
                   return (StatusCode::OK, "".to_string())
                 }
                 res = config_rx.recv() => {
                   if let Ok((target, config)) = res {
-                    let (md5, raw) = map.get(&target).unwrap();
+                    let md5 = map.get(&target).unwrap();
                     if md5 != &config.md5() {
-                      return (StatusCode::OK, raw.to_string())
+                      // TODO: optimize code, add a method to target
+                      let res = format!(
+                        "{}%02{}%02{}",
+                        target.data_id,
+                        target.group,
+                        target.tenant.as_ref().map(|s| s as &str).unwrap_or("")
+                      ) + "%01";
+                      trace!(res, "update");
+                      return (StatusCode::OK, res);
                     }
                   }
                 }
