@@ -16,7 +16,6 @@ use lambda_extension::tracing::error;
 use serde_json::json;
 use std::{
   collections::{HashMap, HashSet},
-  env,
   net::{Ipv4Addr, SocketAddrV4},
   time::Duration,
 };
@@ -27,14 +26,10 @@ use tokio::{
 };
 
 pub async fn start_nacos_adapter(
+  port: u16,
   mut refresh_rx: mpsc::Receiver<()>,
   cp: impl ConfigProvider + Clone + Send + 'static,
 ) {
-  let port = env::var("AWS_LAMBDA_NACOS_ADAPTER_PORT")
-    .ok()
-    .and_then(|p| p.parse().ok())
-    .unwrap_or(8848);
-
   let (target_tx, mut target_rx) = mpsc::channel::<(String, String, Option<String>)>(1);
   let (config_tx, _) = broadcast::channel(1);
 

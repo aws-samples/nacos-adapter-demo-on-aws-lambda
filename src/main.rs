@@ -15,7 +15,10 @@ async fn main() {
   tracing::init_default_subscriber();
 
   let (refresh_tx, refresh_rx) = mpsc::channel(1);
-
+  let port = env::var("AWS_LAMBDA_NACOS_ADAPTER_PORT")
+    .ok()
+    .and_then(|p| p.parse().ok())
+    .unwrap_or(8848);
   let cache_size = env::var("AWS_LAMBDA_NACOS_ADAPTER_CACHE_SIZE")
     .ok()
     .and_then(|s| s.parse().ok())
@@ -23,6 +26,7 @@ async fn main() {
 
   if let Ok(origin) = env::var("AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS") {
     tokio::spawn(start_nacos_adapter(
+      port,
       refresh_rx,
       ProxyConfigProvider::new(cache_size, origin),
     ));
@@ -31,6 +35,7 @@ async fn main() {
       env::var("AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH").unwrap_or("/mnt/efs/nacos/".to_string());
 
     tokio::spawn(start_nacos_adapter(
+      port,
       refresh_rx,
       FsConfigProvider::new(cache_size, prefix),
     ));
