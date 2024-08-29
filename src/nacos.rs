@@ -161,6 +161,14 @@ pub async fn start_nacos_adapter(
           let mut cp = cp.clone();
           let config_tx = config_tx.clone();
           async move {
+            if targets.is_empty() {
+              // TODO: checkout the real response of nacos
+              return (
+                StatusCode::BAD_REQUEST,
+                "missing listening config".to_string(),
+              );
+            }
+
             let mut update_now = vec![];
             let mut map = HashMap::new();
             for (target, md5, raw) in targets.split('\x01').filter(|s| s.len() > 0).map(|s| {
