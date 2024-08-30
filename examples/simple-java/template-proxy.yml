@@ -36,6 +36,7 @@ Resources:
       Environment:
         Variables:
           JAVA_TOOL_OPTIONS: -DJM.LOG.PATH=/tmp/nacos/logs -DJM.SNAPSHOT.PATH=/tmp/
+          NACOS_SERVER_ADDRESS: localhost:8848
           NACOS_DATA_ID: !Ref NacosDataId
           NACOS_GROUP: !Ref NacosGroup
           AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS: !Ref NacosServerAddress
