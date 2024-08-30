@@ -1,4 +1,4 @@
 target
-samconfig.toml
+*.toml
 .aws-sam
 layer
