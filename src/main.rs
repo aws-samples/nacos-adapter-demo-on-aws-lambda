@@ -36,6 +36,7 @@ async fn main() -> Result<(), Error> {
     .ok()
     .and_then(|d| d.parse().ok())
     .unwrap_or(10);
+  debug!("AWS_LAMBDA_NACOS_ADAPTER_DELAY_MS={}", delay_ms);
 
   let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port)).await?;
   let (refresh_tx, refresh_rx) = mpsc::channel(1);
