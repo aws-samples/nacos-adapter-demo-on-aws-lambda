@@ -61,8 +61,13 @@ async fn main() -> Result<(), Error> {
         NextEvent::Shutdown(_e) => {}
         NextEvent::Invoke(_e) => {
           trace!("got next invocation");
-          refresh_tx.send(()).await?;
-          // TODO: wait for refresh done?
+          let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
+          refresh_tx.send(done_tx).await?;
+          // we don't use done_tx to send message,
+          // we just wait for all done_tx are dropped
+          done_rx.recv().await;
+          trace!("refresh done");
+          // TODO: wait for a configurable duration
         }
       }
       Ok(()) as Result<(), Error>

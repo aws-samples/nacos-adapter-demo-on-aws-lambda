@@ -41,7 +41,7 @@ struct ListeningConfig {
 
 pub async fn start_nacos_adapter(
   listener: TcpListener,
-  mut refresh_rx: mpsc::Receiver<()>,
+  mut refresh_rx: mpsc::Receiver<mpsc::Sender<()>>,
   cp: impl ConfigProvider + Clone + Send + 'static,
 ) {
   let (target_tx, mut target_rx) = mpsc::channel::<Arc<Target>>(1);
@@ -59,12 +59,12 @@ pub async fn start_nacos_adapter(
             let Some(target) = target else { break };
             targets.insert(target);
           }
-          r = refresh_rx.recv() => {
-            trace!("refreshing all targets: {:?}", r);
-            let Some(_) = r else { break };
+          done_tx = refresh_rx.recv() => {
+            trace!("refreshing all targets: {:?}", done_tx);
+            let Some(done_tx) = done_tx else { break };
             for target in &targets {
               if let Ok(config) = cp.get(&target.data_id, &target.group, target.tenant.as_ref().map(|s| s as &str)).await {
-                config_tx.send((target.clone(), config)).ok();
+                config_tx.send((target.clone(), config, done_tx.clone())).ok();
               }
             }
           }
@@ -241,7 +241,8 @@ pub async fn start_nacos_adapter(
                   return (StatusCode::OK, "".to_string())
                 }
                 res = config_rx.recv() => {
-                  if let Ok((target, config)) = res {
+                  // hold the `done_tx` until the end of this block
+                  if let Ok((target, config, _done_tx)) = res {
                     let md5 = map.get(&target).unwrap();
                     let new_md5 = config.md5();
                     if md5 != &config.md5() {
