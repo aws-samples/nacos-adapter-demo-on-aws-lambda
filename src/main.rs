@@ -14,8 +14,9 @@ use lambda_extension::{
 use std::{
   env,
   net::{Ipv4Addr, SocketAddrV4},
+  time::Duration,
 };
-use tokio::{net::TcpListener, sync::mpsc};
+use tokio::{net::TcpListener, sync::mpsc, time::sleep};
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -31,6 +32,10 @@ async fn main() -> Result<(), Error> {
     .and_then(|s| s.parse().ok())
     .unwrap_or(64);
   debug!("AWS_LAMBDA_NACOS_ADAPTER_CACHE_SIZE={}", cache_size);
+  let delay_ms = env::var("AWS_LAMBDA_NACOS_ADAPTER_DELAY_MS")
+    .ok()
+    .and_then(|d| d.parse().ok())
+    .unwrap_or(10);
 
   let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port)).await?;
   let (refresh_tx, refresh_rx) = mpsc::channel(1);
@@ -67,7 +72,10 @@ async fn main() -> Result<(), Error> {
           // we just wait for all done_tx are dropped
           done_rx.recv().await;
           trace!("refresh done");
-          // TODO: wait for a configurable duration
+          if delay_ms > 0 {
+            trace!("sleeping for {}ms", delay_ms);
+            sleep(Duration::from_millis(delay_ms)).await;
+          }
         }
       }
       Ok(()) as Result<(), Error>
