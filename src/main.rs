@@ -16,7 +16,11 @@ use std::{
   net::{Ipv4Addr, SocketAddrV4},
   time::Duration,
 };
-use tokio::{net::TcpListener, sync::mpsc, time::sleep};
+use tokio::{
+  net::TcpListener,
+  sync::{mpsc, watch},
+  time::{sleep, Instant},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -37,6 +41,10 @@ async fn main() -> Result<(), Error> {
     .and_then(|d| d.parse().ok())
     .unwrap_or(10);
   debug!("AWS_LAMBDA_NACOS_ADAPTER_DELAY_MS={}", delay_ms);
+  let cooldown_ms = env::var("AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS")
+    .ok()
+    .and_then(|c| c.parse().ok())
+    .unwrap_or(5000);
 
   let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port)).await?;
   let (refresh_tx, refresh_rx) = mpsc::channel(1);
@@ -60,13 +68,26 @@ async fn main() -> Result<(), Error> {
     ));
   }
 
+  let (last_refresh_tx, last_refresh_rx) = watch::channel(Instant::now());
   lambda_extension::run(service_fn(move |event: LambdaEvent| {
     let refresh_tx = refresh_tx.clone();
+    let last_refresh_tx = last_refresh_tx.clone();
+    let last_refresh_rx = last_refresh_rx.clone();
     async move {
       match event.next {
         NextEvent::Shutdown(_e) => {}
         NextEvent::Invoke(_e) => {
           trace!("got next invocation");
+
+          if last_refresh_rx.borrow().elapsed().as_millis() < cooldown_ms {
+            trace!("cooldown not reached");
+            return Ok(());
+          }
+          trace!("cooldown reached");
+          last_refresh_tx
+            .send(Instant::now())
+            .expect("last_refresh_rx should not be dropped");
+
           let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
           refresh_tx.send(done_tx).await?;
           // we don't use done_tx to send message,
