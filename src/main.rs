@@ -96,6 +96,7 @@ async fn main() -> Result<(), Error> {
           done_rx.recv().await;
           trace!("refresh done");
           if delay_ms > 0 {
+            // TODO: if there is no config update, we don't need to delay here
             trace!("sleeping for {}ms", delay_ms);
             sleep(Duration::from_millis(delay_ms)).await;
           }
