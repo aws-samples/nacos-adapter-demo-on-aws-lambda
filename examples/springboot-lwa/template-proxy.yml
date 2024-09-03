@@ -1,0 +1,63 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  sam-app
+
+  Sample SAM Template for sam-app
+
+Parameters:
+  SecurityGroups:
+    Type: CommaDelimitedList
+  SubnetIds:
+    Type: CommaDelimitedList
+  NacosServerAddress:
+    Type: String
+
+Globals:
+  Function:
+    Timeout: 10
+
+Resources:
+  NacosAdapterLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      ContentUri: ./layer
+
+  NacosAdapterSpringBootFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      MemorySize: 1024
+      Handler: run.sh
+      CodeUri: app/
+      Runtime: java8.al2
+      Environment:
+        Variables:
+          PORT: "8000"
+          RUST_LOG: trace
+          READINESS_CHECK_PATH: /healthz
+          REMOVE_BASE_PATH: /v1
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/bootstrap
+          JAVA_TOOL_OPTIONS: -DJM.LOG.PATH=/tmp/nacos/logs -DJM.SNAPSHOT.PATH=/tmp/
+          AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS: !Ref NacosServerAddress
+      Layers:
+        - !Sub arn:aws:lambda:${AWS::Region}:753240598075:layer:LambdaAdapterLayerX86:22
+        - !Ref NacosAdapterLayer
+      Events:
+        Root:
+          Type: HttpApi
+          Properties:
+            Path: /v1
+            Method: ANY
+        Petstore:
+          Type: HttpApi
+          Properties:
+            Path: /v1/{proxy+}
+            Method: ANY
+      VpcConfig:
+        SecurityGroupIds: !Ref SecurityGroups
+        SubnetIds: !Ref SubnetIds
+
+Outputs:
+  ConfigGetterURL:
+    Description: "API Gateway endpoint URL for Prod stage to get the config"
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/v1/config/get"
