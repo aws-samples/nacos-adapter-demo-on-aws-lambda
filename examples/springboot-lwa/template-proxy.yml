@@ -15,7 +15,7 @@ Parameters:
 
 Globals:
   Function:
-    Timeout: 10
+    Timeout: 30
 
 Resources:
   NacosAdapterLayer:
