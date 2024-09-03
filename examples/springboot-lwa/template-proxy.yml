@@ -33,7 +33,7 @@ Resources:
       Environment:
         Variables:
           PORT: "8000"
-          RUST_LOG: trace
+          RUST_LOG: info
           READINESS_CHECK_PATH: /healthz
           AWS_LAMBDA_EXEC_WRAPPER: /opt/bootstrap
           JAVA_TOOL_OPTIONS: -DJM.LOG.PATH=/tmp/nacos/logs -DJM.SNAPSHOT.PATH=/tmp/
