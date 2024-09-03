@@ -45,7 +45,7 @@ Resources:
         Root:
           Type: HttpApi
           Properties:
-            Path: /
+            Path: /{proxy+}
             Method: ANY
       VpcConfig:
         SecurityGroupIds: !Ref SecurityGroups
