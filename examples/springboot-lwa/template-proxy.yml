@@ -35,7 +35,6 @@ Resources:
           PORT: "8000"
           RUST_LOG: trace
           READINESS_CHECK_PATH: /healthz
-          REMOVE_BASE_PATH: /v1
           AWS_LAMBDA_EXEC_WRAPPER: /opt/bootstrap
           JAVA_TOOL_OPTIONS: -DJM.LOG.PATH=/tmp/nacos/logs -DJM.SNAPSHOT.PATH=/tmp/
           AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS: !Ref NacosServerAddress
@@ -46,12 +45,7 @@ Resources:
         Root:
           Type: HttpApi
           Properties:
-            Path: /v1
-            Method: ANY
-        Petstore:
-          Type: HttpApi
-          Properties:
-            Path: /v1/{proxy+}
+            Path: /
             Method: ANY
       VpcConfig:
         SecurityGroupIds: !Ref SecurityGroups
@@ -60,4 +54,4 @@ Resources:
 Outputs:
   ConfigGetterURL:
     Description: "API Gateway endpoint URL for Prod stage to get the config"
-    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/v1/config/get"
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/config/get"
