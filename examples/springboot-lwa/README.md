@@ -41,3 +41,7 @@ sam deploy -g
 ```sh
 sam delete
 ```
+
+## Credit
+
+This example is based on the official [nacos-spring-boot-config-example](https://github.com/nacos-group/nacos-examples/tree/master/nacos-spring-boot-example/nacos-spring-boot-config-example).
