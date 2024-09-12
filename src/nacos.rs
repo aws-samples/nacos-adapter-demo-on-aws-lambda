@@ -107,23 +107,19 @@ pub async fn start_nacos_adapter(
       get({
         let mut cp = cp.clone();
         move |Query(params): Query<HashMap<String, String>>| async move {
-          let Some(data_id) = params.get("dataId").filter(|s| s.len() > 0) else {
+          let Some(data_id) = get_non_empty(&params, "dataId") else {
             return (
               StatusCode::INTERNAL_SERVER_ERROR,
               DATA_ID_NOT_FOUND_1.to_string(),
             );
           };
-          let Some(group) = params.get("group").filter(|s| s.len() > 0) else {
+          let Some(group) = get_non_empty(&params, "group") else {
             return (
               StatusCode::INTERNAL_SERVER_ERROR,
               GROUP_NOT_FOUND_1.to_string(),
             );
           };
-
-          let tenant = params
-            .get("tenant")
-            .filter(|s| s.len() > 0)
-            .map(|s| s as &str);
+          let tenant = get_non_empty(&params, "tenant").map(|s| s as &str);
 
           match handle_get_config!(data_id, group, tenant, cp) {
             Some(config) => (StatusCode::OK, config.to_string()),
@@ -137,20 +133,16 @@ pub async fn start_nacos_adapter(
       get({
         let mut cp = cp.clone();
         move |Query(params): Query<HashMap<String, String>>| async move {
-          let Some(data_id) = params.get("dataId").filter(|s| s.len() > 0) else {
+          let Some(data_id) = get_non_empty(&params, "dataId") else {
             return (StatusCode::BAD_REQUEST, DATA_ID_NOT_FOUND_2.to_string());
           };
-          let Some(group) = params.get("group").filter(|s| s.len() > 0) else {
+          let Some(group) = get_non_empty(&params, "group") else {
             return (StatusCode::BAD_REQUEST, GROUP_NOT_FOUND_2.to_string());
           };
+          let tenant = get_non_empty(&params, "namespaceId").map(|s| s as &str);
 
           // TODO: "tag" in nacos api v2 is not supported yet
           // TODO: grpc in nacos api v2 is not supported yet
-
-          let tenant = params
-            .get("namespaceId")
-            .filter(|s| s.len() > 0)
-            .map(|s| s as &str);
 
           match handle_get_config!(data_id, group, tenant, cp) {
             Some(config) => (
@@ -283,4 +275,8 @@ pub async fn start_nacos_adapter(
     }));
 
   axum::serve(listener, app).await.unwrap();
+}
+
+fn get_non_empty<'a>(params: &'a HashMap<String, String>, key: &str) -> Option<&'a String> {
+  params.get(key).filter(|s| s.len() > 0)
 }
