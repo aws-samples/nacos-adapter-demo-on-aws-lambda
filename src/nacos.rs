@@ -176,7 +176,8 @@ pub async fn start_nacos_adapter(
             }
 
             let mut update_now = vec![];
-            let mut map = HashMap::new();
+            // target => md5
+            let mut target_map = HashMap::new();
             for (target, md5) in targets.split('\x01').filter(|s| s.len() > 0).map(|s| {
               let mut parts = s.split('\x02');
               // TODO: better error handling
@@ -208,7 +209,7 @@ pub async fn start_nacos_adapter(
                 trace!(md5, cached_md5, "md5 not match");
                 update_now.push(target.clone());
               }
-              map.insert(target, md5);
+              target_map.insert(target, md5);
             }
 
             if !update_now.is_empty() {
@@ -246,11 +247,11 @@ pub async fn start_nacos_adapter(
                 }
                 res = config_rx.recv() => {
                   if let Ok((target, config, changed_tx)) = res {
-                    let md5 = map.get(&target).unwrap();
+                    let md5 = target_map.get(&target).unwrap();
                     let new_md5 = config.md5();
                     if md5 != &config.md5() {
                       trace!(md5, new_md5, "md5 not match");
-                      // TODO: optimize code, add a method to Target
+                      // TODO: optimize code, add a method to Target, use correct url encoding
                       let res = format!(
                         "{}%02{}%02{}",
                         target.data_id,
