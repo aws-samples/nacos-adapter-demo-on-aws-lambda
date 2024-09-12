@@ -2,7 +2,8 @@ use super::Config;
 use lambda_extension::Error;
 use std::{future::Future, sync::Arc};
 
-pub trait ConfigProvider {
+/// This should be cheap to clone.
+pub trait ConfigProvider: Clone + Send + Sync {
   fn get(
     &mut self,
     data_id: &str,

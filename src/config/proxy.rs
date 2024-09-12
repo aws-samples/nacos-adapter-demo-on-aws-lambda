@@ -4,13 +4,14 @@ use std::sync::Arc;
 
 #[derive(Clone, Debug)]
 pub struct ProxyConfigProvider {
-  base: String,
+  /// Wrapped in an Arc to make [`Self`] cheap to clone.
+  base: Arc<String>,
 }
 
 impl ProxyConfigProvider {
   pub fn new(addr: String) -> Self {
     ProxyConfigProvider {
-      base: format!("http://{}/nacos/v1/cs/configs", addr),
+      base: Arc::new(format!("http://{}/nacos/v1/cs/configs", addr)),
     }
   }
 }

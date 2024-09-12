@@ -13,15 +13,17 @@ pub struct CacheValue {
 
 #[derive(Clone, Debug)]
 pub struct FsConfigProvider {
+  /// Moka cache, which is cheap to clone.
   cache: Cache<String, CacheValue>,
-  prefix: String,
+  /// Wrapped in an Arc to make [`Self`] cheap to clone.
+  prefix: Arc<String>,
 }
 
 impl FsConfigProvider {
   pub fn new(size: u64, prefix: String) -> Self {
     FsConfigProvider {
       cache: Cache::new(size),
-      prefix,
+      prefix: Arc::new(prefix),
     }
   }
 }
