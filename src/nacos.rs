@@ -59,12 +59,12 @@ pub async fn start_nacos_adapter(
             let Some(target) = target else { break };
             targets.insert(target);
           }
-          done_tx = refresh_rx.recv() => {
-            trace!("refreshing all targets: {:?}", done_tx);
-            let Some(done_tx) = done_tx else { break };
+          changed_tx = refresh_rx.recv() => {
+            trace!("refreshing all targets: {:?}", changed_tx.is_some());
+            let Some(changed_tx) = changed_tx else { break };
             for target in &targets {
               if let Ok(config) = cp.get(&target.data_id, &target.group, target.tenant.as_ref().map(|s| s as &str)).await {
-                config_tx.send((target.clone(), config, done_tx.clone())).ok();
+                config_tx.send((target.clone(), config, changed_tx.clone())).ok();
               }
             }
           }
@@ -241,13 +241,12 @@ pub async fn start_nacos_adapter(
                   return (StatusCode::OK, "".to_string())
                 }
                 res = config_rx.recv() => {
-                  // hold the `done_tx` until the end of this block
-                  if let Ok((target, config, _done_tx)) = res {
+                  if let Ok((target, config, changed_tx)) = res {
                     let md5 = map.get(&target).unwrap();
                     let new_md5 = config.md5();
                     if md5 != &config.md5() {
                       trace!(md5, new_md5, "md5 not match");
-                      // TODO: optimize code, add a method to target
+                      // TODO: optimize code, add a method to Target
                       let res = format!(
                         "{}%02{}%02{}",
                         target.data_id,
@@ -255,6 +254,7 @@ pub async fn start_nacos_adapter(
                         target.tenant.as_ref().map(|s| s as &str).unwrap_or("")
                       ) + "%01";
                       trace!(res, "update");
+                      changed_tx.send(()).await.expect("changed_rx should not be dropped");
                       return (StatusCode::OK, res);
                     }
                   }

@@ -77,14 +77,17 @@ async fn main() -> Result<(), Error> {
             .send(Instant::now())
             .expect("last_refresh_rx should not be dropped");
 
-          let (done_tx, mut done_rx) = mpsc::channel::<()>(1);
-          refresh_tx.send(done_tx).await?;
-          // we don't use done_tx to send message,
-          // we just wait for all done_tx are dropped
-          done_rx.recv().await;
-          trace!("refresh done");
-          if delay_ms > 0 {
-            // TODO: if there is no config update, we don't need to delay here
+          let (changed_tx, mut changed_rx) = mpsc::channel::<()>(1);
+          refresh_tx.send(changed_tx).await?;
+          let mut changed = false;
+          while let Some(()) = changed_rx.recv().await {
+            changed = true;
+          }
+          // now changed_rx.recv() is None, meaning all changed_tx are dropped and the refresh is done
+          trace!(changed, "refresh done");
+
+          // only delay if config changed
+          if changed && delay_ms > 0 {
             trace!("sleeping for {}ms", delay_ms);
             sleep(Duration::from_millis(delay_ms)).await;
           }
