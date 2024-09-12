@@ -1,4 +1,4 @@
-use super::provider::{Config, ConfigProvider};
+use super::{provider::ConfigProvider, Config};
 use lambda_extension::Error;
 use moka::future::Cache;
 use std::{os::unix::fs::MetadataExt, sync::Arc};
