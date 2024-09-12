@@ -12,6 +12,7 @@ use axum::{
   routing::{any, get, post},
   Form, Router,
 };
+use futures::future::join_all;
 use lambda_extension::tracing::{error, trace};
 use serde::Deserialize;
 use serde_json::json;
@@ -44,29 +45,40 @@ pub async fn start_nacos_adapter(
   mut refresh_rx: mpsc::Receiver<mpsc::Sender<()>>,
   cp: impl ConfigProvider + Clone + Send + 'static,
 ) {
+  // this channel is used to register listening targets to the target manager
   let (target_tx, mut target_rx) = mpsc::channel::<Arc<Target>>(1);
+  // this channel is used to send updated target from the target manager to the long connection
   let (config_tx, _) = broadcast::channel(1);
 
+  // spawn the target manager
   tokio::spawn({
-    let mut cp = cp.clone();
+    let cp = cp.clone();
     let config_tx = config_tx.clone();
     async move {
       let mut targets = HashSet::new();
       loop {
         tokio::select! {
           target = target_rx.recv() => {
-            trace!("register target: {:?}", target);
+            trace!("register target: {:?}", target.as_ref().map(|t| t.as_ref()));
             let Some(target) = target else { break };
             targets.insert(target);
           }
           changed_tx = refresh_rx.recv() => {
             trace!("refreshing all targets: {:?}", changed_tx.is_some());
             let Some(changed_tx) = changed_tx else { break };
-            for target in &targets {
-              if let Ok(config) = cp.get(&target.data_id, &target.group, target.tenant.as_ref().map(|s| s as &str)).await {
-                config_tx.send((target.clone(), config, changed_tx.clone())).ok();
+
+            join_all(targets.iter().map(|target| {
+              let mut cp = cp.clone();
+              let config_tx = config_tx.clone();
+              let changed_tx = changed_tx.clone();
+              async move {
+                if let Ok(config) = cp.get(&target.data_id, &target.group, target.tenant.as_deref()).await {
+                  // it's ok if the config_tx.send failed
+                  // it means the long connection is disconnected but might be reconnected later
+                  config_tx.send((target.clone(), config, changed_tx.clone())).ok();
+                }
               }
-            }
+            })).await;
           }
         }
       }
