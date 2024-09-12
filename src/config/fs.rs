@@ -4,6 +4,7 @@ use moka::future::Cache;
 use std::{os::unix::fs::MetadataExt, sync::Arc};
 use tokio::fs;
 
+/// This is cheap to clone.
 #[derive(Clone, Debug)]
 pub struct CacheValue {
   pub mtime: i64,
