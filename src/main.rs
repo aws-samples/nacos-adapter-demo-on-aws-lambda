@@ -41,7 +41,7 @@ async fn main() -> Result<(), Error> {
     tokio::spawn(start_nacos_adapter(
       listener,
       refresh_rx,
-      ProxyConfigProvider::new(cache_size, origin),
+      ProxyConfigProvider::new(origin),
     ));
   } else {
     let prefix =
