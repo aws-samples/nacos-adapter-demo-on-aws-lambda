@@ -13,7 +13,9 @@ use lambda_extension::{
 };
 use std::{
   env,
+  fmt::Display,
   net::{Ipv4Addr, SocketAddrV4},
+  str::FromStr,
   time::Duration,
 };
 use tokio::{
@@ -26,26 +28,10 @@ use tokio::{
 async fn main() -> Result<(), Error> {
   tracing::init_default_subscriber();
 
-  let port = env::var("AWS_LAMBDA_NACOS_ADAPTER_PORT")
-    .ok()
-    .and_then(|p| p.parse().ok())
-    .unwrap_or(8848);
-  debug!("AWS_LAMBDA_NACOS_ADAPTER_PORT={}", port);
-  let cache_size = env::var("AWS_LAMBDA_NACOS_ADAPTER_CACHE_SIZE")
-    .ok()
-    .and_then(|s| s.parse().ok())
-    .unwrap_or(64);
-  debug!("AWS_LAMBDA_NACOS_ADAPTER_CACHE_SIZE={}", cache_size);
-  let delay_ms = env::var("AWS_LAMBDA_NACOS_ADAPTER_DELAY_MS")
-    .ok()
-    .and_then(|d| d.parse().ok())
-    .unwrap_or(10);
-  debug!("AWS_LAMBDA_NACOS_ADAPTER_DELAY_MS={}", delay_ms);
-  let cooldown_ms = env::var("AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS")
-    .ok()
-    .and_then(|c| c.parse().ok())
-    .unwrap_or(5000);
-  debug!("AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS={}", cooldown_ms);
+  let port = parse_env("AWS_LAMBDA_NACOS_ADAPTER_PORT", 8848);
+  let cache_size = parse_env("AWS_LAMBDA_NACOS_ADAPTER_CACHE_SIZE", 64);
+  let delay_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_DELAY_MS", 10);
+  let cooldown_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS", 5000);
 
   let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port)).await?;
   let (refresh_tx, refresh_rx) = mpsc::channel(1);
@@ -106,4 +92,13 @@ async fn main() -> Result<(), Error> {
     }
   }))
   .await
+}
+
+fn parse_env<T: FromStr + Display + Copy>(name: &str, default: T) -> T {
+  let v = env::var(name)
+    .ok()
+    .and_then(|p| p.parse().ok())
+    .unwrap_or(default);
+  debug!("{}={}", name, default);
+  v
 }
