@@ -1,5 +1,6 @@
 mod config;
 mod constant;
+mod grpc;
 mod nacos;
 
 use crate::{
