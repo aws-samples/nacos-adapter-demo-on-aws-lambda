@@ -14,7 +14,6 @@ pub struct CacheValue {
 pub struct FsConfigProvider {
   cache: Cache<String, CacheValue>,
   prefix: String,
-  // TODO: add cache timeout
 }
 
 impl FsConfigProvider {

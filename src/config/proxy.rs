@@ -7,7 +7,6 @@ use std::sync::Arc;
 pub struct ProxyConfigProvider {
   cache: Cache<String, Arc<Config>>,
   base: Arc<String>,
-  // TODO: add cache timeout
 }
 
 impl ProxyConfigProvider {
