@@ -68,8 +68,10 @@ async fn main() -> Result<(), Error> {
 
           if last_refresh_rx.borrow().elapsed().as_millis() < cooldown_ms {
             trace!("cooldown not reached");
+            // we don't need to refresh config, just return
             return Ok(());
           }
+
           trace!("cooldown reached");
           last_refresh_tx
             .send(Instant::now())
