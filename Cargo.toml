@@ -15,5 +15,7 @@ moka = { version = "0.12", features = ["future"] }
 md5 = "0.7.0"
 # disable default features to avoid linking musl openssl
 reqwest = { version = "0.12.7", default-features = false }
+futures = "0.3.30"
+urlencoding = "2.1.3"
 tonic = "0.4"
 prost = "0.7"
