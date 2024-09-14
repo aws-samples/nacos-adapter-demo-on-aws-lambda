@@ -26,12 +26,24 @@ use tokio::{
   sync::{broadcast, mpsc},
   time::sleep,
 };
+use urlencoding::encode;
 
 #[derive(Debug, Hash, PartialEq, Eq)]
 struct Target {
   pub data_id: String,
   pub group: String,
   pub tenant: Option<String>,
+}
+
+impl Target {
+  pub fn to_string(&self) -> String {
+    format!(
+      "{}\x02{}\x02{}\x01",
+      self.data_id,
+      self.group,
+      self.tenant.as_deref().unwrap_or("")
+    )
+  }
 }
 
 #[derive(Deserialize)]
@@ -213,19 +225,14 @@ pub async fn start_nacos_adapter(
             }
 
             if !update_now.is_empty() {
-              let res = update_now
-                .iter()
-                .map(|t| {
-                  format!(
-                    "{}%02{}%02{}",
-                    t.data_id,
-                    t.group,
-                    t.tenant.as_ref().map(|s| s as &str).unwrap_or("")
-                  )
-                })
-                .collect::<Vec<_>>()
-                .join("%01")
-                + "%01";
+              let res = encode(
+                &update_now
+                  .iter()
+                  .map(|t| t.to_string())
+                  .collect::<Vec<_>>()
+                  .join(""),
+              )
+              .to_string();
               trace!(res, "immediate update");
               return (StatusCode::OK, res);
             }
@@ -251,13 +258,7 @@ pub async fn start_nacos_adapter(
                     let new_md5 = config.md5();
                     if md5 != &config.md5() {
                       trace!(md5, new_md5, "md5 not match");
-                      // TODO: optimize code, add a method to Target, use correct url encoding
-                      let res = format!(
-                        "{}%02{}%02{}",
-                        target.data_id,
-                        target.group,
-                        target.tenant.as_ref().map(|s| s as &str).unwrap_or("")
-                      ) + "%01";
+                      let res = encode(&target.to_string()).to_string();
                       trace!(res, "update");
                       changed_tx.send(()).await.expect("changed_rx should not be dropped");
                       return (StatusCode::OK, res);

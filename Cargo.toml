@@ -16,3 +16,4 @@ md5 = "0.7.0"
 # disable default features to avoid linking musl openssl
 reqwest = { version = "0.12.7", default-features = false }
 futures = "0.3.30"
+urlencoding = "2.1.3"
