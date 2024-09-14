@@ -180,10 +180,9 @@ pub async fn start_nacos_adapter(
           let mut config_rx = config_tx.subscribe();
           async move {
             if targets.is_empty() {
-              // TODO: checkout the real response of nacos
               return (
                 StatusCode::BAD_REQUEST,
-                "missing listening config".to_string(),
+                "caused: invalid probeModify;".to_string(),
               );
             }
 
