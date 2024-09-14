@@ -23,7 +23,7 @@ use std::{
 };
 use tokio::{
   net::TcpListener,
-  sync::{broadcast, mpsc},
+  sync::{broadcast, mpsc, Mutex},
   time::sleep,
 };
 use urlencoding::encode;
@@ -176,7 +176,7 @@ pub async fn start_nacos_adapter(
       post(
         move |headers: HeaderMap, Form(ListeningConfig { targets })| {
           trace!(targets, "listening config");
-          let mut cp = cp.clone();
+          let cp = cp.clone();
           let mut config_rx = config_tx.subscribe();
           async move {
             if targets.is_empty() {
@@ -186,43 +186,41 @@ pub async fn start_nacos_adapter(
               );
             }
 
-            let mut update_now = vec![];
+            let update_now = Arc::new(Mutex::new(vec![]));
             // target => md5
             let mut target_map = HashMap::new();
-            for (target, md5) in targets.split('\x01').filter(|s| s.len() > 0).map(|s| {
+            join_all(targets.split('\x01').filter(|s| s.len() > 0).map(|s| {
               let mut parts = s.split('\x02');
               // TODO: better error handling
               let data_id = parts.next().unwrap();
               let group = parts.next().unwrap();
               let md5 = parts.next().unwrap();
               let tenant = parts.next();
-              (
-                Arc::new(Target {
-                  data_id: data_id.to_string(),
-                  group: group.to_string(),
-                  tenant: tenant.map(|s| s.to_string()),
-                }),
-                md5,
-              )
-            }) {
-              // TODO: do this in parallel
-              target_tx.send(target.clone()).await.unwrap();
-              let cached = cp
-                .get(
-                  &target.data_id,
-                  &target.group,
-                  target.tenant.as_ref().map(|s| s as &str),
-                )
-                .await
-                .unwrap();
-              let cached_md5 = cached.md5();
-              if md5 != cached_md5 {
-                trace!(md5, cached_md5, "md5 not match");
-                update_now.push(target.clone());
+              let target = Arc::new(Target {
+                data_id: data_id.to_string(),
+                group: group.to_string(),
+                tenant: tenant.map(|s| s.to_string()),
+              });
+              target_map.insert(target.clone(), md5);
+              let mut cp = cp.clone();
+              let target_tx = target_tx.clone();
+              let update_now = update_now.clone();
+              async move {
+                target_tx.send(target.clone()).await.unwrap();
+                let cached = cp
+                  .get(&target.data_id, &target.group, target.tenant.as_deref())
+                  .await
+                  .unwrap();
+                let cached_md5 = cached.md5();
+                if md5 != cached_md5 {
+                  trace!(md5, cached_md5, "md5 not match");
+                  update_now.lock().await.push(target);
+                }
               }
-              target_map.insert(target, md5);
-            }
+            }))
+            .await;
 
+            let update_now = Arc::try_unwrap(update_now).unwrap().into_inner();
             if !update_now.is_empty() {
               let res = encode(
                 &update_now
