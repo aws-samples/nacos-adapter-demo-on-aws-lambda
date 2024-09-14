@@ -1,9 +1,10 @@
-use super::provider::{Config, ConfigProvider};
+use super::{provider::ConfigProvider, Config};
 use lambda_extension::Error;
 use moka::future::Cache;
 use std::{os::unix::fs::MetadataExt, sync::Arc};
 use tokio::fs;
 
+/// This is cheap to clone.
 #[derive(Clone, Debug)]
 pub struct CacheValue {
   pub mtime: i64,
@@ -12,16 +13,17 @@ pub struct CacheValue {
 
 #[derive(Clone, Debug)]
 pub struct FsConfigProvider {
+  /// Moka cache, which is cheap to clone.
   cache: Cache<String, CacheValue>,
-  prefix: String,
-  // TODO: add cache timeout
+  /// Wrapped in an Arc to make [`Self`] cheap to clone.
+  prefix: Arc<String>,
 }
 
 impl FsConfigProvider {
   pub fn new(size: u64, prefix: String) -> Self {
     FsConfigProvider {
       cache: Cache::new(size),
-      prefix,
+      prefix: Arc::new(prefix),
     }
   }
 }
