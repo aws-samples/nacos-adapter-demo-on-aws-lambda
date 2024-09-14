@@ -1,5 +1,5 @@
 //! This file is copied from
-//! https://github.com/nacos-group/r-nacos/blob/fad7ef08b926a8a776f9f519bff38f01945ab795/src/grpc/nacos_proto.rs
+//! https://github.com/nacos-group/r-nacos/blob/6bb9ab85f7adccdc3bacf59dbda8c32a5daaafd8/src/grpc/nacos_proto.rs
 
 #![allow(non_camel_case_types)]
 
