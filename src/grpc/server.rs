@@ -1,21 +1,23 @@
-use crate::config::provider::ConfigProvider;
+use crate::config::{provider::ConfigProvider, target::Target, Config};
 
 use super::{
   api_model::{
-    BaseResponse, ConfigQueryRequest, ConfigQueryResponse, ServerCheckResponse, ERROR_CODE,
-    NOT_FOUND, SUCCESS_CODE,
+    BaseResponse, ConfigBatchListenRequest, ConfigChangeBatchListenResponse, ConfigContext,
+    ConfigQueryRequest, ConfigQueryResponse, ServerCheckResponse, ERROR_CODE, NOT_FOUND,
+    SUCCESS_CODE,
   },
   nacos_proto::{
     self,
-    bi_request_stream_server::BiRequestStream,
+    bi_request_stream_server::{BiRequestStream, BiRequestStreamServer},
     request_server::{Request, RequestServer},
     Payload,
   },
   utils::{HandlerResult, PayloadUtils},
 };
-use lambda_extension::tracing::{debug, error, info, warn};
+use lambda_extension::tracing::{debug, error, info, trace, warn};
 use lazy_static::lazy_static;
-use std::{net::SocketAddr, sync::Arc};
+use std::{borrow::Borrow, collections::HashMap, net::SocketAddr, sync::Arc};
+use tokio::sync::{broadcast, mpsc};
 use tonic::transport::Server;
 
 lazy_static! {
@@ -33,11 +35,13 @@ pub(crate) const SERVER_CHECK_REQUEST: &str = "ServerCheckRequest";
 pub(crate) const CONFIG_QUERY_REQUEST: &str = "ConfigQueryRequest";
 pub(crate) const CONFIG_BATCH_LISTEN_REQUEST: &str = "ConfigBatchListenRequest";
 
-pub struct RequestServerImpl<Config> {
-  cp: Config,
+pub struct RequestServerImpl<CP> {
+  target_tx: mpsc::Sender<Arc<Target>>,
+  config_tx: broadcast::Sender<(Arc<Target>, Arc<Config>, mpsc::Sender<()>)>,
+  cp: CP,
 }
 
-impl<Config: ConfigProvider + Clone + Send + 'static> RequestServerImpl<Config> {
+impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
   pub async fn handle(&self, payload: Payload) -> anyhow::Result<HandlerResult> {
     let Some(url) = PayloadUtils::get_payload_type(&payload) else {
       return Ok(HandlerResult::error(302u16, "empty type url".to_owned()));
@@ -109,7 +113,62 @@ impl<Config: ConfigProvider + Clone + Send + 'static> RequestServerImpl<Config> 
         }
       }
       CONFIG_BATCH_LISTEN_REQUEST => {
-        todo!()
+        let body_vec = payload.body.unwrap_or_default().value;
+        let request: ConfigBatchListenRequest = serde_json::from_slice(&body_vec)?;
+        let mut target_map = HashMap::new();
+        for item in request.config_listen_contexts {
+          let target = Arc::new(Target {
+            data_id: item.data_id,
+            group: item.group,
+            tenant: if item.tenant.is_empty() {
+              None
+            } else {
+              Some(item.tenant)
+            },
+          });
+          target_map.insert(target.clone(), item.md5);
+          self.target_tx.send(target).await.unwrap();
+        }
+
+        let mut response = ConfigChangeBatchListenResponse {
+          request_id: request.request_id,
+          ..Default::default()
+        };
+        loop {
+          match self.config_tx.subscribe().recv().await {
+            Ok((target, config, changed_tx)) => {
+              let md5 = target_map.get(&target).unwrap().as_ref();
+              let new_md5 = config.md5();
+              if md5 != config.md5() {
+                trace!(md5, new_md5, "md5 not match");
+                response.result_code = SUCCESS_CODE;
+                let obj = ConfigContext {
+                  data_id: target.data_id.to_owned().into(),
+                  group: target.group.to_owned().into(),
+                  tenant: target.tenant.as_deref().unwrap_or("").to_owned().into(),
+                };
+                response.changed_configs.push(obj);
+                changed_tx
+                  .send(())
+                  .await
+                  .expect("changed_rx should not be dropped");
+                return Ok(HandlerResult::success(PayloadUtils::build_payload(
+                  "ConfigChangeBatchListenResponse",
+                  serde_json::to_string(&response)?,
+                )));
+              }
+            }
+            Err(err) => {
+              response.result_code = ERROR_CODE;
+              response.error_code = ERROR_CODE;
+              response.message = Some(err.to_string());
+              return Ok(HandlerResult::success(PayloadUtils::build_payload(
+                "ErrorResponse",
+                serde_json::to_string(&response)?,
+              )));
+            }
+          }
+        }
       }
       _ => {
         warn!("InvokerHandler not fund handler,type:{}", url);
@@ -122,11 +181,19 @@ impl<Config: ConfigProvider + Clone + Send + 'static> RequestServerImpl<Config> 
   }
 }
 
-pub fn spawn(addr: SocketAddr, cp: impl ConfigProvider + Clone + Send + 'static) {
+pub fn spawn(
+  addr: SocketAddr,
+  target_tx: mpsc::Sender<Arc<Target>>,
+  config_tx: broadcast::Sender<(Arc<Target>, Arc<Config>, mpsc::Sender<()>)>,
+  cp: impl ConfigProvider + Clone + Send + 'static,
+) {
   tokio::spawn(async move {
-    let request_server = RequestServerImpl { cp };
-    // let bi_request_stream_server =
-    //     BiRequestStreamServerImpl::new(grpc_app_data.bi_stream_manage.clone());
+    let request_server = RequestServerImpl {
+      cp,
+      target_tx,
+      config_tx,
+    };
+    // let bi_request_stream_server = BiRequestStreamServerImpl {};
     Server::builder()
       .add_service(RequestServer::new(request_server))
       // .add_service(BiRequestStreamServer::new(bi_request_stream_server))
@@ -137,7 +204,7 @@ pub fn spawn(addr: SocketAddr, cp: impl ConfigProvider + Clone + Send + 'static)
 }
 
 #[tonic::async_trait]
-impl<Config: ConfigProvider + Clone + Send + 'static> Request for RequestServerImpl<Config> {
+impl<CP: ConfigProvider + Clone + Send + 'static> Request for RequestServerImpl<CP> {
   async fn request(
     &self,
     request: tonic::Request<Payload>,

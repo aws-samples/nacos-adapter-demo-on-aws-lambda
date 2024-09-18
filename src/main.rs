@@ -44,12 +44,14 @@ async fn main() -> Result<(), Error> {
     let (target_tx, config_tx) = spawn_target_manager(cp.clone(), refresh_rx);
     tokio::spawn(start_nacos_adapter(
       listener,
-      target_tx,
-      config_tx,
+      target_tx.clone(),
+      config_tx.clone(),
       cp.clone(),
     ));
     grpc::spawn(
       SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port + 1000).into(),
+      target_tx,
+      config_tx,
       cp,
     );
   } else {
@@ -61,12 +63,14 @@ async fn main() -> Result<(), Error> {
     let (target_tx, config_tx) = spawn_target_manager(cp.clone(), refresh_rx);
     tokio::spawn(start_nacos_adapter(
       listener,
-      target_tx,
-      config_tx,
+      target_tx.clone(),
+      config_tx.clone(),
       cp.clone(),
     ));
     grpc::spawn(
       SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port + 1000).into(),
+      target_tx,
+      config_tx,
       cp,
     );
   }
