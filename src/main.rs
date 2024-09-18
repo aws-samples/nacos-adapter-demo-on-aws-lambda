@@ -7,6 +7,7 @@ use crate::{
   config::{fs::FsConfigProvider, proxy::ProxyConfigProvider},
   nacos::start_nacos_adapter,
 };
+use config::target::spawn_target_manager;
 use lambda_extension::{
   service_fn,
   tracing::{self, debug, trace},
@@ -40,7 +41,13 @@ async fn main() -> Result<(), Error> {
   if let Ok(origin) = env::var("AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS") {
     debug!("AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS={}", origin);
     let cp = ProxyConfigProvider::new(origin);
-    tokio::spawn(start_nacos_adapter(listener, refresh_rx, cp.clone()));
+    let (target_tx, config_tx) = spawn_target_manager(cp.clone(), refresh_rx);
+    tokio::spawn(start_nacos_adapter(
+      listener,
+      target_tx,
+      config_tx,
+      cp.clone(),
+    ));
     grpc::spawn(
       SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port + 1000).into(),
       cp,
@@ -51,7 +58,13 @@ async fn main() -> Result<(), Error> {
     debug!("AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH={}", prefix);
 
     let cp = FsConfigProvider::new(cache_size, prefix);
-    tokio::spawn(start_nacos_adapter(listener, refresh_rx, cp.clone()));
+    let (target_tx, config_tx) = spawn_target_manager(cp.clone(), refresh_rx);
+    tokio::spawn(start_nacos_adapter(
+      listener,
+      target_tx,
+      config_tx,
+      cp.clone(),
+    ));
     grpc::spawn(
       SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port + 1000).into(),
       cp,

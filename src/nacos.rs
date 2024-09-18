@@ -1,5 +1,5 @@
 use crate::{
-  config::provider::ConfigProvider,
+  config::{provider::ConfigProvider, target::Target, Config},
   constant::{
     CONFIG_NOT_FOUND_2, DATA_ID_NOT_FOUND_1, DATA_ID_NOT_FOUND_2, GROUP_NOT_FOUND_1,
     GROUP_NOT_FOUND_2,
@@ -16,35 +16,13 @@ use futures::future::join_all;
 use lambda_extension::tracing::{error, trace};
 use serde::Deserialize;
 use serde_json::json;
-use std::{
-  collections::{HashMap, HashSet},
-  sync::Arc,
-  time::Duration,
-};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::{
   net::TcpListener,
   sync::{broadcast, mpsc, Mutex},
   time::sleep,
 };
 use urlencoding::encode;
-
-#[derive(Debug, Hash, PartialEq, Eq)]
-struct Target {
-  pub data_id: String,
-  pub group: String,
-  pub tenant: Option<String>,
-}
-
-impl Target {
-  pub fn to_string(&self) -> String {
-    format!(
-      "{}\x02{}\x02{}\x01",
-      self.data_id,
-      self.group,
-      self.tenant.as_deref().unwrap_or("")
-    )
-  }
-}
 
 #[derive(Deserialize)]
 struct ListeningConfig {
@@ -54,50 +32,10 @@ struct ListeningConfig {
 
 pub async fn start_nacos_adapter(
   listener: TcpListener,
-  mut refresh_rx: mpsc::Receiver<mpsc::Sender<()>>,
+  target_tx: mpsc::Sender<Arc<Target>>,
+  config_tx: broadcast::Sender<(Arc<Target>, Arc<Config>, mpsc::Sender<()>)>,
   cp: impl ConfigProvider + Clone + Send + 'static,
 ) {
-  // this channel is used to register listening targets to the target manager
-  let (target_tx, mut target_rx) = mpsc::channel::<Arc<Target>>(1);
-  // this channel is used to send updated target from the target manager to the long connection
-  let (config_tx, _) = broadcast::channel(1);
-
-  // spawn the target manager
-  tokio::spawn({
-    let cp = cp.clone();
-    let config_tx = config_tx.clone();
-    async move {
-      let mut targets = HashSet::new();
-      loop {
-        tokio::select! {
-          target = target_rx.recv() => {
-            trace!("register target: {:?}", target.as_ref().map(|t| t.as_ref()));
-            let Some(target) = target else { break };
-            targets.insert(target);
-          }
-          changed_tx = refresh_rx.recv() => {
-            trace!("refreshing all targets: {:?}", changed_tx.is_some());
-            let Some(changed_tx) = changed_tx else { break };
-
-            join_all(targets.iter().map(|target| {
-              let mut cp = cp.clone();
-              let config_tx = config_tx.clone();
-              let changed_tx = changed_tx.clone();
-              async move {
-                if let Ok(config) = cp.get(&target.data_id, &target.group, target.tenant.as_deref()).await {
-                  // it's ok if the config_tx.send failed
-                  // it means the long connection is disconnected but might be reconnected later
-                  config_tx.send((target.clone(), config, changed_tx.clone())).ok();
-                }
-              }
-            })).await;
-          }
-        }
-      }
-      trace!("target manager is stopped");
-    }
-  });
-
   macro_rules! handle_get_config {
     ($data_id:expr, $group:expr, $tenant:expr, $cp:expr) => {{
       match $cp.get($data_id, $group, $tenant).await {
