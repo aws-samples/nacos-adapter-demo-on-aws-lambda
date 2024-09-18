@@ -39,21 +39,23 @@ async fn main() -> Result<(), Error> {
 
   if let Ok(origin) = env::var("AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS") {
     debug!("AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS={}", origin);
-    tokio::spawn(start_nacos_adapter(
-      listener,
-      refresh_rx,
-      ProxyConfigProvider::new(origin),
-    ));
+    let cp = ProxyConfigProvider::new(origin);
+    tokio::spawn(start_nacos_adapter(listener, refresh_rx, cp.clone()));
+    grpc::spawn(
+      SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port + 1000).into(),
+      cp,
+    );
   } else {
     let prefix =
       env::var("AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH").unwrap_or("/mnt/efs/nacos/".to_string());
     debug!("AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH={}", prefix);
 
-    tokio::spawn(start_nacos_adapter(
-      listener,
-      refresh_rx,
-      FsConfigProvider::new(cache_size, prefix),
-    ));
+    let cp = FsConfigProvider::new(cache_size, prefix);
+    tokio::spawn(start_nacos_adapter(listener, refresh_rx, cp.clone()));
+    grpc::spawn(
+      SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port + 1000).into(),
+      cp,
+    );
   }
 
   let (last_refresh_tx, last_refresh_rx) = watch::channel(Instant::now());
