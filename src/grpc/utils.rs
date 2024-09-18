@@ -1,5 +1,6 @@
 //! The content of this file is copied from
 //! https://github.com/nacos-group/r-nacos/blob/6bb9ab85f7adccdc3bacf59dbda8c32a5daaafd8/src/grpc/mod.rs#L25
+#![allow(dead_code)]
 
 use super::{api_model::BaseResponse, nacos_proto};
 use std::collections::HashMap;
