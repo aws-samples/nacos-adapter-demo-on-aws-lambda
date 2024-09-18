@@ -82,14 +82,6 @@ impl<Config: ConfigProvider + Clone + Send + 'static> RequestServerImpl<Config> 
             response.result_code = SUCCESS_CODE;
             response.content = config.content().to_owned().into();
             response.content_type = Some(CONFIG_TYPE_TEXT.clone());
-            //response.encrypted_data_key = Some("".to_owned());
-            //java nacos中定义tag类型是String;
-            //nacos-sdk-go中定义tag类型为bool, nacos-sdk-go中直接设置 response.tag = request.tag会报错
-            if let Some(tag) = request.tag {
-              if !tag.is_empty() {
-                response.tag = Some(tag);
-              }
-            }
             response.last_modified = 0;
             response.md5 = Some(config.md5().to_owned().into());
             Ok(HandlerResult::success(PayloadUtils::build_payload(
