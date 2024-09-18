@@ -13,7 +13,7 @@ use super::{
   },
   utils::{HandlerResult, PayloadUtils},
 };
-use lambda_extension::tracing::{error, info, warn};
+use lambda_extension::tracing::{debug, error, info, warn};
 use lazy_static::lazy_static;
 use std::{net::SocketAddr, sync::Arc};
 use tonic::transport::Server;
@@ -70,12 +70,20 @@ impl<Config: ConfigProvider + Clone + Send + 'static> RequestServerImpl<Config> 
           ..Default::default()
         };
 
-        info!(data_id = %request.data_id, group = %request.group, tenant = %request.tenant, "ConfigQueryRequest");
+        debug!(data_id = %request.data_id, group = %request.group, tenant = %request.tenant, "ConfigQueryRequest");
 
         match self
           .cp
           .clone()
-          .get(&request.data_id, &request.group, Some(&request.tenant))
+          .get(
+            &request.data_id,
+            &request.group,
+            if request.tenant.is_empty() {
+              None
+            } else {
+              Some(&request.tenant)
+            },
+          )
           .await
         {
           Ok(config) => {
