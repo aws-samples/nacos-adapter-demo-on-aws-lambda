@@ -13,7 +13,7 @@ use axum::{
   Form, Router,
 };
 use futures::future::join_all;
-use lambda_extension::tracing::{error, trace};
+use lambda_extension::tracing::{debug, error};
 use serde::Deserialize;
 use serde_json::json;
 use std::{collections::HashMap, sync::Arc, time::Duration};
@@ -47,16 +47,12 @@ async fn start(
 ) {
   macro_rules! handle_get_config {
     ($data_id:expr, $group:expr, $tenant:expr, $cp:expr) => {{
-      match $cp.get($data_id, $group, $tenant, false).await {
-        Ok(config) => Some(config.content().to_owned()),
-        Err(e) => {
-          let data_id = $data_id;
-          let group = $group;
-          let tenant = $tenant;
-          error!(data_id, group, tenant, error = %e.to_string(), "failed to get config");
-          None
-        }
-      }
+      $cp.get($data_id, $group, $tenant, false).await.map_err(|e|{
+        let data_id = $data_id;
+        let group = $group;
+        let tenant = $tenant;
+        error!(data_id, group, tenant, error = %e.to_string(), "failed to get config");
+      }).ok()
     }};
   }
 
@@ -78,10 +74,10 @@ async fn start(
               GROUP_NOT_FOUND_1.to_string(),
             );
           };
-          let tenant = get_non_empty(&params, "tenant").map(|s| s as &str);
+          let tenant = get_non_empty(&params, "tenant").map(|s| s.as_str());
 
           match handle_get_config!(data_id, group, tenant, cp) {
-            Some(config) => (StatusCode::OK, config.to_string()),
+            Some(config) => (StatusCode::OK, config.content().to_string()),
             None => (StatusCode::NOT_FOUND, "Not Found".to_string()),
           }
         }
@@ -101,7 +97,6 @@ async fn start(
           let tenant = get_non_empty(&params, "namespaceId").map(|s| s as &str);
 
           // TODO: "tag" in nacos api v2 is not supported yet
-          // TODO: grpc in nacos api v2 is not supported yet
 
           match handle_get_config!(data_id, group, tenant, cp) {
             Some(config) => (
@@ -109,7 +104,7 @@ async fn start(
               json!({
                 "code": 0,
                 "message": "success",
-                "data": config
+                "data": config.content()
               })
               .to_string(),
             ),
@@ -122,9 +117,10 @@ async fn start(
       "/nacos/v1/cs/configs/listener",
       post(
         move |headers: HeaderMap, Form(ListeningConfig { targets })| {
-          trace!(targets, "listening config");
+          debug!(targets, "listening config");
           let cp = cp.clone();
           let mut config_rx = config_tx.subscribe();
+
           async move {
             if targets.is_empty() {
               return (
@@ -146,22 +142,27 @@ async fn start(
                 group: group.to_string().into(),
                 tenant: tenant.map(|s| s.to_string().into()),
               };
+
               let mut cp = cp.clone();
               let target_tx = target_tx.clone();
               let update_now = update_now.clone();
+
               async move {
+                // register target to the target manager
                 target_tx
                   .send((target.clone(), md5.to_owned()))
                   .await
                   .unwrap();
-                let cached = cp
+                // check if the md5 mismatch now
+                if let Ok(cached) = cp
                   .get(&target.data_id, &target.group, target.tenant(), false)
                   .await
-                  .unwrap();
-                let cached_md5 = cached.md5();
-                if md5 != cached_md5 {
-                  trace!(md5, cached_md5, "md5 not match");
-                  update_now.lock().await.push(target);
+                {
+                  let cached_md5 = cached.md5();
+                  if md5 != cached_md5 {
+                    debug!(md5, cached_md5, "md5 not match");
+                    update_now.lock().await.push(target);
+                  }
                 }
               }
             }))
@@ -177,7 +178,7 @@ async fn start(
                   .join(""),
               )
               .to_string();
-              trace!(res, "immediate update");
+              debug!(res, "immediate update");
               return (StatusCode::OK, res);
             }
 
@@ -193,13 +194,16 @@ async fn start(
               tokio::select! {
                 _ = &mut timeout => {
                   // timeout, nothing is changed
-                  trace!("listener timeout");
+                  debug!("listener timeout");
                   return (StatusCode::OK, "".to_string())
                 }
                 res = config_rx.recv() => {
+                  // got config update from the target manager
+                  // TODO: check if the updated config is one of we are listening
                   if let Ok((target, changed_tx)) = res {
                     let res = encode(&target.to_param_string()).to_string();
-                    trace!(res, "update");
+                    debug!(res, "update");
+                    // notify the lambda extension to sleep
                     changed_tx.send(()).await.expect("changed_rx should not be dropped");
                     return (StatusCode::OK, res);
                   }
