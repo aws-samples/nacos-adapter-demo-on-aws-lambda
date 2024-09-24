@@ -125,7 +125,7 @@ pub async fn start_nacos_adapter(
             }
 
             let update_now = Arc::new(Mutex::new(vec![]));
-            join_all(targets.split('\x01').filter(|s| s.len() > 0).map(|s| {
+            join_all(targets.split('\x01').filter(|s| !s.is_empty()).map(|s| {
               let mut parts = s.split('\x02');
               // TODO: better error handling
               let data_id = parts.next().unwrap();
@@ -210,5 +210,5 @@ pub async fn start_nacos_adapter(
 }
 
 fn get_non_empty<'a>(params: &'a HashMap<String, String>, key: &str) -> Option<&'a String> {
-  params.get(key).filter(|s| s.len() > 0)
+  params.get(key).filter(|s| !s.is_empty())
 }
