@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, fmt::Display, sync::Arc};
 
 use futures::future::join_all;
 use lambda_extension::tracing::trace;
@@ -13,9 +13,10 @@ pub struct Target {
   pub tenant: Option<String>,
 }
 
-impl Target {
-  pub fn to_string(&self) -> String {
-    format!(
+impl Display for Target {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(
+      f,
       "{}\x02{}\x02{}\x01",
       self.data_id,
       self.group,
