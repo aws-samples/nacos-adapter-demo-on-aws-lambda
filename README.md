@@ -46,3 +46,7 @@ TODO
 
 - Nacos v2's grpc protocol is not supported, please use Nacos v1's client.
 - The updated config might be applied from the second invocation after the refresh if your function returns very fast, instead of the next invocation.
+
+## Credits
+
+This project references many code snippets from [nacos-group/r-nacos](https://github.com/nacos-group/r-nacos/).
