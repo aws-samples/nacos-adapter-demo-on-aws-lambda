@@ -13,7 +13,7 @@ use axum::{
   Form, Router,
 };
 use futures::future::join_all;
-use lambda_extension::tracing::{debug, error};
+use lambda_extension::tracing::{debug, error, warn};
 use serde::Deserialize;
 use serde_json::json;
 use std::{collections::HashMap, sync::Arc, time::Duration};
@@ -215,7 +215,7 @@ async fn start(
       ),
     )
     .fallback(any(|request: Request<Body>| async move {
-      error!(uri = %request.uri().to_string(), "unhandled request");
+      warn!(uri = %request.uri().to_string(), "unhandled request");
       (StatusCode::NOT_FOUND, "Not Found".to_string())
     }));
 
