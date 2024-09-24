@@ -1,6 +1,6 @@
 use super::provider::ConfigProvider;
 use futures::future::join_all;
-use lambda_extension::tracing::trace;
+use lambda_extension::tracing::{debug, trace};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{broadcast, mpsc};
 
@@ -28,6 +28,7 @@ impl Target {
   }
 }
 
+#[allow(clippy::type_complexity, reason = "one time use")]
 pub fn spawn_target_manager(
   cp: impl ConfigProvider + Clone + Send + 'static,
   mut refresh_rx: mpsc::Receiver<mpsc::Sender<()>>,
@@ -48,12 +49,12 @@ pub fn spawn_target_manager(
       loop {
         tokio::select! {
           target = target_rx.recv() => {
-            trace!("register target: {:?}", target);
+            debug!("register target: {:?}", target); // target might be None
             let Some((target, md5)) = target else { break };
             targets.insert(target, md5);
           }
           changed_tx = refresh_rx.recv() => {
-            trace!("refreshing all targets: {:?}", changed_tx.is_some());
+            debug!("refreshing all targets: {:?}", changed_tx.is_some());
             let Some(changed_tx) = changed_tx else { break };
 
             join_all(targets.iter().map(|(target, md5)| {
@@ -64,7 +65,7 @@ pub fn spawn_target_manager(
                 if let Ok(config) = cp.get(&target.data_id, &target.group, target.tenant()).await {
                   let new_md5 = config.md5();
                   if new_md5 != md5 {
-                    trace!(md5, new_md5, "md5 not match");
+                    debug!(md5, new_md5, "md5 mismatch");
                     // it's ok if the config_tx.send failed
                     // it means the long connection is disconnected but might be reconnected later
                     config_tx.send((target.clone(), changed_tx.clone())).ok();
