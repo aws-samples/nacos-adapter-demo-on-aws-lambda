@@ -37,7 +37,7 @@ pub(crate) const CONFIG_QUERY_REQUEST: &str = "ConfigQueryRequest";
 pub(crate) const CONFIG_BATCH_LISTEN_REQUEST: &str = "ConfigBatchListenRequest";
 
 pub struct RequestServerImpl<CP> {
-  target_tx: mpsc::Sender<(Arc<Target>, String)>,
+  target_tx: mpsc::Sender<(Target, String)>,
   cp: CP,
 }
 
@@ -123,19 +123,19 @@ impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
 
         for item in request.config_listen_contexts {
           debug!(data_id = %item.data_id, group = %item.group, tenant = %item.tenant, "ConfigBatchListenRequest");
-          let target = Arc::new(Target {
-            data_id: item.data_id.clone(),
-            group: item.group.clone(),
+          let target = Target {
+            data_id: item.data_id.clone().into(),
+            group: item.group.clone().into(),
             tenant: if item.tenant.is_empty() {
               None
             } else {
-              Some(item.tenant.clone())
+              Some(item.tenant.clone().into())
             },
-          });
+          };
           let cache = self
             .cp
             .clone()
-            .get(&target.data_id, &target.group, target.tenant.as_deref())
+            .get(&target.data_id, &target.group, target.tenant())
             .await?;
           if cache.md5() != item.md5.as_str() {
             let obj = ConfigContext {
@@ -171,8 +171,8 @@ impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
 
 pub fn spawn(
   addr: SocketAddr,
-  target_tx: mpsc::Sender<(Arc<Target>, String)>,
-  config_tx: broadcast::Sender<(Arc<Target>, mpsc::Sender<()>)>,
+  target_tx: mpsc::Sender<(Target, String)>,
+  config_tx: broadcast::Sender<(Target, mpsc::Sender<()>)>,
   cp: impl ConfigProvider + Clone + Send + 'static,
 ) {
   tokio::spawn(async move {
@@ -206,7 +206,7 @@ impl<CP: ConfigProvider + Clone + Send + 'static> Request for RequestServerImpl<
 }
 
 pub struct BiRequestStreamServerImpl {
-  config_tx: broadcast::Sender<(Arc<Target>, mpsc::Sender<()>)>,
+  config_tx: broadcast::Sender<(Target, mpsc::Sender<()>)>,
 }
 
 #[tonic::async_trait]
@@ -236,9 +236,9 @@ impl BiRequestStream for BiRequestStreamServerImpl {
       };
       while let Ok((target, changed_tx)) = config_rx.recv().await {
         let request = ConfigChangeNotifyRequest {
-          group: target.group.to_owned().into(),
-          data_id: target.data_id.to_owned().into(),
-          tenant: target.tenant.as_deref().unwrap_or("").to_owned().into(),
+          group: target.group.to_owned(),
+          data_id: target.data_id.to_owned(),
+          tenant: target.tenant().unwrap_or("").to_owned().into(),
           request_id: Some(next_request_id()),
           module: Some(CONFIG_MODEL.to_string()),
           ..Default::default()

@@ -4,11 +4,12 @@ use lambda_extension::tracing::trace;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{broadcast, mpsc};
 
-#[derive(Debug, Hash, PartialEq, Eq)]
+/// This is cheap to clone. This is `Send` and `Sync`.
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct Target {
-  pub data_id: String,
-  pub group: String,
-  pub tenant: Option<String>,
+  pub data_id: Arc<String>,
+  pub group: Arc<String>,
+  pub tenant: Option<Arc<String>>,
 }
 
 impl Target {
@@ -18,8 +19,12 @@ impl Target {
       "{}\x02{}\x02{}\x01",
       self.data_id,
       self.group,
-      self.tenant.as_deref().unwrap_or("")
+      self.tenant().unwrap_or("")
     )
+  }
+
+  pub fn tenant(&self) -> Option<&str> {
+    self.tenant.as_deref().map(|s| s.as_str())
   }
 }
 
@@ -27,11 +32,11 @@ pub fn spawn_target_manager(
   cp: impl ConfigProvider + Clone + Send + 'static,
   mut refresh_rx: mpsc::Receiver<mpsc::Sender<()>>,
 ) -> (
-  mpsc::Sender<(Arc<Target>, String)>,
-  broadcast::Sender<(Arc<Target>, mpsc::Sender<()>)>,
+  mpsc::Sender<(Target, String)>,
+  broadcast::Sender<(Target, mpsc::Sender<()>)>,
 ) {
   // this channel is used to register listening targets to the target manager
-  let (target_tx, mut target_rx) = mpsc::channel::<(Arc<Target>, String)>(1);
+  let (target_tx, mut target_rx) = mpsc::channel::<(Target, String)>(1);
   // this channel is used to send updated target from the target manager to the long connection
   let (config_tx, _) = broadcast::channel(1);
 
@@ -43,7 +48,7 @@ pub fn spawn_target_manager(
       loop {
         tokio::select! {
           target = target_rx.recv() => {
-            trace!("register target: {:?}", target.as_ref().map(|(target, md5)| (target.as_ref(), md5)));
+            trace!("register target: {:?}", target);
             let Some((target, md5)) = target else { break };
             targets.insert(target, md5);
           }
@@ -56,7 +61,7 @@ pub fn spawn_target_manager(
               let config_tx = config_tx.clone();
               let changed_tx = changed_tx.clone();
               async move {
-                if let Ok(config) = cp.get(&target.data_id, &target.group, target.tenant.as_deref()).await {
+                if let Ok(config) = cp.get(&target.data_id, &target.group, target.tenant()).await {
                   let new_md5 = config.md5();
                   if new_md5 != md5 {
                     trace!(md5, new_md5, "md5 not match");

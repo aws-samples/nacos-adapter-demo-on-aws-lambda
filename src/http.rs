@@ -32,8 +32,8 @@ struct ListeningConfig {
 
 pub fn spawn(
   listener: TcpListener,
-  target_tx: mpsc::Sender<(Arc<Target>, String)>,
-  config_tx: broadcast::Sender<(Arc<Target>, mpsc::Sender<()>)>,
+  target_tx: mpsc::Sender<(Target, String)>,
+  config_tx: broadcast::Sender<(Target, mpsc::Sender<()>)>,
   cp: impl ConfigProvider + Clone + Send + 'static,
 ) {
   tokio::spawn(start(listener, target_tx, config_tx, cp));
@@ -41,8 +41,8 @@ pub fn spawn(
 
 async fn start(
   listener: TcpListener,
-  target_tx: mpsc::Sender<(Arc<Target>, String)>,
-  config_tx: broadcast::Sender<(Arc<Target>, mpsc::Sender<()>)>,
+  target_tx: mpsc::Sender<(Target, String)>,
+  config_tx: broadcast::Sender<(Target, mpsc::Sender<()>)>,
   cp: impl ConfigProvider + Clone + Send + 'static,
 ) {
   macro_rules! handle_get_config {
@@ -141,11 +141,11 @@ async fn start(
               let group = parts.next().unwrap();
               let md5 = parts.next().unwrap();
               let tenant = parts.next();
-              let target = Arc::new(Target {
-                data_id: data_id.to_string(),
-                group: group.to_string(),
-                tenant: tenant.map(|s| s.to_string()),
-              });
+              let target = Target {
+                data_id: data_id.to_string().into(),
+                group: group.to_string().into(),
+                tenant: tenant.map(|s| s.to_string().into()),
+              };
               let mut cp = cp.clone();
               let target_tx = target_tx.clone();
               let update_now = update_now.clone();
@@ -155,7 +155,7 @@ async fn start(
                   .await
                   .unwrap();
                 let cached = cp
-                  .get(&target.data_id, &target.group, target.tenant.as_deref())
+                  .get(&target.data_id, &target.group, target.tenant())
                   .await
                   .unwrap();
                 let cached_md5 = cached.md5();
