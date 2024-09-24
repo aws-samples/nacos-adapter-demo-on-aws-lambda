@@ -37,10 +37,9 @@ async fn main() -> Result<(), Error> {
     let cp = ProxyConfigProvider::new(origin);
     start_mock_nacos(port, cp).await?
   } else {
-    let prefix =
-      env::var("AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH").unwrap_or("/mnt/efs/nacos/".to_string());
+    let prefix = env::var("AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH")
+      .unwrap_or_else(|_| "/mnt/efs/nacos/".to_string());
     debug!("AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH={}", prefix);
-
     let cp = FsConfigProvider::new(cache_size, prefix);
     start_mock_nacos(port, cp).await?
   };
