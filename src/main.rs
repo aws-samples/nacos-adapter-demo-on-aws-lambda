@@ -32,21 +32,18 @@ async fn main() -> Result<(), Error> {
   let delay_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_DELAY_MS", 10);
   let cooldown_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS", 0);
 
-  let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port)).await?;
-  let (refresh_tx, refresh_rx) = mpsc::channel(1);
-
-  if let Ok(origin) = env::var("AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS") {
+  let refresh_tx = if let Ok(origin) = env::var("AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS") {
     debug!("AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS={}", origin);
     let cp = ProxyConfigProvider::new(origin);
-    start_mock_nacos(listener, port, refresh_rx, cp);
+    start_mock_nacos(port, cp).await?
   } else {
     let prefix =
       env::var("AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH").unwrap_or("/mnt/efs/nacos/".to_string());
     debug!("AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH={}", prefix);
 
     let cp = FsConfigProvider::new(cache_size, prefix);
-    start_mock_nacos(listener, port, refresh_rx, cp);
-  }
+    start_mock_nacos(port, cp).await?
+  };
 
   let (last_refresh_tx, last_refresh_rx) = watch::channel(Instant::now());
   lambda_extension::run(service_fn(move |event: LambdaEvent| {
@@ -92,20 +89,26 @@ async fn main() -> Result<(), Error> {
   .await
 }
 
-fn start_mock_nacos(
-  listener: TcpListener,
+async fn start_mock_nacos(
   port: u16,
-  refresh_rx: mpsc::Receiver<mpsc::Sender<()>>,
   cp: impl ConfigProvider + Clone + Send + 'static,
-) {
+) -> Result<mpsc::Sender<mpsc::Sender<()>>, Error> {
+  let (refresh_tx, refresh_rx) = mpsc::channel(1);
   let (target_tx, config_tx) = spawn_target_manager(cp.clone(), refresh_rx);
-  http::spawn(listener, target_tx.clone(), config_tx.clone(), cp.clone());
-  grpc::spawn(
-    SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port + 1000).into(),
-    target_tx,
-    config_tx,
-    cp,
+
+  http::spawn(
+    TcpListener::bind(local_addr(port)).await?,
+    target_tx.clone(),
+    config_tx.clone(),
+    cp.clone(),
   );
+  grpc::spawn(local_addr(port + 1000).into(), target_tx, config_tx, cp);
+
+  Ok(refresh_tx)
+}
+
+fn local_addr(port: u16) -> SocketAddrV4 {
+  SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port)
 }
 
 fn parse_env<T: FromStr + Display + Copy>(name: &str, default: T) -> T {
