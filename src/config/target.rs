@@ -1,10 +1,8 @@
-use std::{collections::HashMap, fmt::Display, sync::Arc};
-
+use super::provider::ConfigProvider;
 use futures::future::join_all;
 use lambda_extension::tracing::trace;
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{broadcast, mpsc};
-
-use super::provider::ConfigProvider;
 
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub struct Target {
@@ -13,10 +11,10 @@ pub struct Target {
   pub tenant: Option<String>,
 }
 
-impl Display for Target {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(
-      f,
+impl Target {
+  /// Returns `"{data_id}\x02{group}\x02{tenant}\x01"`.
+  pub fn to_param_string(&self) -> String {
+    format!(
       "{}\x02{}\x02{}\x01",
       self.data_id,
       self.group,

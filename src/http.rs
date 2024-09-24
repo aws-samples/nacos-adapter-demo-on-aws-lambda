@@ -172,7 +172,7 @@ async fn start(
               let res = encode(
                 &update_now
                   .iter()
-                  .map(|t| t.to_string())
+                  .map(|t| t.to_param_string())
                   .collect::<Vec<_>>()
                   .join(""),
               )
@@ -198,7 +198,7 @@ async fn start(
                 }
                 res = config_rx.recv() => {
                   if let Ok((target, changed_tx)) = res {
-                    let res = encode(&target.to_string()).to_string();
+                    let res = encode(&target.to_param_string()).to_string();
                     trace!(res, "update");
                     changed_tx.send(()).await.expect("changed_rx should not be dropped");
                     return (StatusCode::OK, res);
