@@ -2,9 +2,9 @@ use crate::config::{provider::ConfigProvider, target::Target, Config};
 
 use super::{
   api_model::{
-    BaseResponse, ConfigBatchListenRequest, ConfigChangeBatchListenResponse, ConfigContext,
-    ConfigQueryRequest, ConfigQueryResponse, ServerCheckResponse, ERROR_CODE, NOT_FOUND,
-    SUCCESS_CODE,
+    BaseResponse, ConfigBatchListenRequest, ConfigChangeBatchListenResponse,
+    ConfigChangeNotifyRequest, ConfigContext, ConfigQueryRequest, ConfigQueryResponse,
+    ServerCheckResponse, CONFIG_MODEL, ERROR_CODE, NOT_FOUND, SUCCESS_CODE,
   },
   nacos_proto::{
     self,
@@ -14,7 +14,10 @@ use super::{
   },
   utils::{HandlerResult, PayloadUtils},
 };
-use lambda_extension::tracing::{debug, error, info, trace, warn};
+use lambda_extension::{
+  tracing::{debug, error, info, trace, warn},
+  Error,
+};
 use lazy_static::lazy_static;
 use std::{borrow::Borrow, collections::HashMap, net::SocketAddr, sync::Arc};
 use tokio::sync::{broadcast, mpsc};
@@ -36,13 +39,13 @@ pub(crate) const CONFIG_QUERY_REQUEST: &str = "ConfigQueryRequest";
 pub(crate) const CONFIG_BATCH_LISTEN_REQUEST: &str = "ConfigBatchListenRequest";
 
 pub struct RequestServerImpl<CP> {
-  target_tx: mpsc::Sender<Arc<Target>>,
+  target_tx: mpsc::Sender<(Arc<Target>, String)>,
   config_tx: broadcast::Sender<(Arc<Target>, Arc<Config>, mpsc::Sender<()>)>,
   cp: CP,
 }
 
 impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
-  pub async fn handle(&self, payload: Payload) -> anyhow::Result<HandlerResult> {
+  pub async fn handle(&self, payload: Payload) -> Result<HandlerResult, Error> {
     let Some(url) = PayloadUtils::get_payload_type(&payload) else {
       return Ok(HandlerResult::error(302u16, "empty type url".to_owned()));
     };
@@ -116,63 +119,48 @@ impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
         let mut config_rx = self.config_tx.subscribe();
         let body_vec = payload.body.unwrap_or_default().value;
         let request: ConfigBatchListenRequest = serde_json::from_slice(&body_vec)?;
-        let mut target_map = HashMap::new();
-        for item in request.config_listen_contexts {
-          debug!(data_id = %item.data_id, group = %item.group, tenant = %item.tenant, "ConfigBatchListenRequest");
-          let target = Arc::new(Target {
-            data_id: item.data_id,
-            group: item.group,
-            tenant: if item.tenant.is_empty() {
-              None
-            } else {
-              Some(item.tenant)
-            },
-          });
-          target_map.insert(target.clone(), item.md5);
-          self.target_tx.send(target).await.unwrap();
-        }
 
         let mut response = ConfigChangeBatchListenResponse {
           request_id: request.request_id,
           ..Default::default()
         };
-        loop {
-          match config_rx.recv().await {
-            Ok((target, config, changed_tx)) => {
-              trace!(target = %target.as_ref(), "refreshed, checking md5");
-              let md5 = target_map.get(&target).unwrap().as_ref();
-              let new_md5 = config.md5();
-              if md5 != config.md5() {
-                trace!(md5, new_md5, "md5 not match");
-                response.result_code = SUCCESS_CODE;
-                let obj = ConfigContext {
-                  data_id: target.data_id.to_owned().into(),
-                  group: target.group.to_owned().into(),
-                  tenant: target.tenant.as_deref().unwrap_or("").to_owned().into(),
-                };
-                response.changed_configs.push(obj);
-                changed_tx
-                  .send(())
-                  .await
-                  .expect("changed_rx should not be dropped");
-                return Ok(HandlerResult::success(PayloadUtils::build_payload(
-                  "ConfigChangeBatchListenResponse",
-                  serde_json::to_string(&response)?,
-                )));
-              }
-            }
-            Err(err) => {
-              response.result_code = ERROR_CODE;
-              response.error_code = ERROR_CODE;
-              response.message = Some(err.to_string());
-              warn!("ConfigBatchListenRequest error:{}", err);
-              return Ok(HandlerResult::success(PayloadUtils::build_payload(
-                "ErrorResponse",
-                serde_json::to_string(&response)?,
-              )));
-            }
+
+        for item in request.config_listen_contexts {
+          debug!(data_id = %item.data_id, group = %item.group, tenant = %item.tenant, "ConfigBatchListenRequest");
+          let target = Arc::new(Target {
+            data_id: item.data_id.clone(),
+            group: item.group.clone(),
+            tenant: if item.tenant.is_empty() {
+              None
+            } else {
+              Some(item.tenant.clone())
+            },
+          });
+          let cache = self
+            .cp
+            .clone()
+            .get(&target.data_id, &target.group, target.tenant.as_deref())
+            .await?;
+          if cache.md5() != item.md5.as_str() {
+            let obj = ConfigContext {
+              data_id: item.data_id.into(),
+              group: item.group.into(),
+              tenant: item.tenant.into(),
+            };
+            response.changed_configs.push(obj);
           }
+          self
+            .target_tx
+            .send((target, item.md5.to_string()))
+            .await
+            .unwrap();
         }
+
+        response.result_code = SUCCESS_CODE;
+        Ok(HandlerResult::success(PayloadUtils::build_payload(
+          "ConfigChangeBatchListenResponse",
+          serde_json::to_string(&response)?,
+        )))
       }
       _ => {
         warn!("InvokerHandler not fund handler,type:{}", url);
@@ -187,20 +175,20 @@ impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
 
 pub fn spawn(
   addr: SocketAddr,
-  target_tx: mpsc::Sender<Arc<Target>>,
+  target_tx: mpsc::Sender<(Arc<Target>, String)>,
   config_tx: broadcast::Sender<(Arc<Target>, Arc<Config>, mpsc::Sender<()>)>,
   cp: impl ConfigProvider + Clone + Send + 'static,
 ) {
   tokio::spawn(async move {
     let request_server = RequestServerImpl {
-      cp,
+      cp: cp.clone(),
       target_tx,
-      config_tx,
+      config_tx: config_tx.clone(),
     };
-    // let bi_request_stream_server = BiRequestStreamServerImpl {};
+    let bi_request_stream_server = BiRequestStreamServerImpl { cp, config_tx };
     Server::builder()
       .add_service(RequestServer::new(request_server))
-      // .add_service(BiRequestStreamServer::new(bi_request_stream_server))
+      .add_service(BiRequestStreamServer::new(bi_request_stream_server))
       .serve(addr)
       .await
       .unwrap();
@@ -225,17 +213,58 @@ impl<CP: ConfigProvider + Clone + Send + 'static> Request for RequestServerImpl<
   }
 }
 
-// pub struct BiRequestStreamServerImpl {}
+pub struct BiRequestStreamServerImpl<CP> {
+  config_tx: broadcast::Sender<(Arc<Target>, Arc<Config>, mpsc::Sender<()>)>,
+  cp: CP,
+}
 
-// #[tonic::async_trait]
-// impl BiRequestStream for BiRequestStreamServerImpl {
-//   type requestBiStreamStream =
-//     tokio_stream::wrappers::ReceiverStream<Result<Payload, tonic::Status>>;
+#[tonic::async_trait]
+impl<CP: ConfigProvider + Clone + Send + 'static> BiRequestStream
+  for BiRequestStreamServerImpl<CP>
+{
+  type requestBiStreamStream =
+    tokio_stream::wrappers::ReceiverStream<Result<Payload, tonic::Status>>;
 
-//   async fn request_bi_stream(
-//     &self,
-//     request: tonic::Request<tonic::Streaming<Payload>>,
-//   ) -> Result<tonic::Response<Self::requestBiStreamStream>, tonic::Status> {
-//     todo!()
-//   }
-// }
+  async fn request_bi_stream(
+    &self,
+    request: tonic::Request<tonic::Streaming<Payload>>,
+  ) -> Result<tonic::Response<Self::requestBiStreamStream>, tonic::Status> {
+    let client_id = Arc::new(request.remote_addr().unwrap().to_string());
+    let req = request.into_inner();
+    let (tx, rx) = tokio::sync::mpsc::channel(10);
+    let r_stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+
+    let mut config_rx = self.config_tx.subscribe();
+    tokio::spawn(async move {
+      let mut next_request_id = {
+        let mut request_id: u64 = 0;
+        move || {
+          if request_id >= 0x7fff_ffff_ffff_ffff {
+            request_id = 0;
+          } else {
+            request_id += 1;
+          }
+          request_id.to_string()
+        }
+      };
+      while let Ok((target, config, changed_tx)) = config_rx.recv().await {
+        let request = ConfigChangeNotifyRequest {
+          group: target.group.to_owned().into(),
+          data_id: target.data_id.to_owned().into(),
+          tenant: target.tenant.as_deref().unwrap_or("").to_owned().into(),
+          request_id: Some(next_request_id()),
+          module: Some(CONFIG_MODEL.to_string()),
+          ..Default::default()
+        };
+        let payload = PayloadUtils::build_payload(
+          "ConfigChangeNotifyRequest",
+          serde_json::to_string(&request).unwrap(),
+        );
+        tx.send(Ok(payload)).await.unwrap();
+        changed_tx.send(()).await.unwrap();
+      }
+    });
+
+    Ok(tonic::Response::new(r_stream))
+  }
+}

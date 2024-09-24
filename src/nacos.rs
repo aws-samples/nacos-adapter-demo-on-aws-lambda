@@ -32,7 +32,7 @@ struct ListeningConfig {
 
 pub async fn start_nacos_adapter(
   listener: TcpListener,
-  target_tx: mpsc::Sender<Arc<Target>>,
+  target_tx: mpsc::Sender<(Arc<Target>, String)>,
   config_tx: broadcast::Sender<(Arc<Target>, Arc<Config>, mpsc::Sender<()>)>,
   cp: impl ConfigProvider + Clone + Send + 'static,
 ) {
@@ -125,8 +125,6 @@ pub async fn start_nacos_adapter(
             }
 
             let update_now = Arc::new(Mutex::new(vec![]));
-            // target => md5
-            let mut target_map = HashMap::new();
             join_all(targets.split('\x01').filter(|s| s.len() > 0).map(|s| {
               let mut parts = s.split('\x02');
               // TODO: better error handling
@@ -139,12 +137,14 @@ pub async fn start_nacos_adapter(
                 group: group.to_string(),
                 tenant: tenant.map(|s| s.to_string()),
               });
-              target_map.insert(target.clone(), md5);
               let mut cp = cp.clone();
               let target_tx = target_tx.clone();
               let update_now = update_now.clone();
               async move {
-                target_tx.send(target.clone()).await.unwrap();
+                target_tx
+                  .send((target.clone(), md5.to_owned()))
+                  .await
+                  .unwrap();
                 let cached = cp
                   .get(&target.data_id, &target.group, target.tenant.as_deref())
                   .await
@@ -188,16 +188,11 @@ pub async fn start_nacos_adapter(
                   return (StatusCode::OK, "".to_string())
                 }
                 res = config_rx.recv() => {
-                  if let Ok((target, config, changed_tx)) = res {
-                    let md5 = target_map.get(&target).unwrap();
-                    let new_md5 = config.md5();
-                    if md5 != &config.md5() {
-                      trace!(md5, new_md5, "md5 not match");
-                      let res = encode(&target.to_string()).to_string();
-                      trace!(res, "update");
-                      changed_tx.send(()).await.expect("changed_rx should not be dropped");
-                      return (StatusCode::OK, res);
-                    }
+                  if let Ok((target, _config, changed_tx)) = res {
+                    let res = encode(&target.to_string()).to_string();
+                    trace!(res, "update");
+                    changed_tx.send(()).await.expect("changed_rx should not be dropped");
+                    return (StatusCode::OK, res);
                   }
                 }
               }

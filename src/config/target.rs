@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fmt::Display, sync::Arc};
+use std::{collections::HashMap, fmt::Display, sync::Arc};
 
 use futures::future::join_all;
 use lambda_extension::tracing::trace;
@@ -29,11 +29,11 @@ pub fn spawn_target_manager(
   cp: impl ConfigProvider + Clone + Send + 'static,
   mut refresh_rx: mpsc::Receiver<mpsc::Sender<()>>,
 ) -> (
-  mpsc::Sender<Arc<Target>>,
+  mpsc::Sender<(Arc<Target>, String)>,
   broadcast::Sender<(Arc<Target>, Arc<Config>, mpsc::Sender<()>)>,
 ) {
   // this channel is used to register listening targets to the target manager
-  let (target_tx, mut target_rx) = mpsc::channel::<Arc<Target>>(1);
+  let (target_tx, mut target_rx) = mpsc::channel::<(Arc<Target>, String)>(1);
   // this channel is used to send updated target from the target manager to the long connection
   let (config_tx, _) = broadcast::channel(1);
 
@@ -41,27 +41,31 @@ pub fn spawn_target_manager(
   tokio::spawn({
     let config_tx = config_tx.clone();
     async move {
-      let mut targets = HashSet::new();
+      let mut targets = HashMap::new();
       loop {
         tokio::select! {
           target = target_rx.recv() => {
-            trace!("register target: {:?}", target.as_ref().map(|t| t.as_ref()));
-            let Some(target) = target else { break };
-            targets.insert(target);
+            trace!("register target: {:?}", target.as_ref().map(|(target, md5)| (target.as_ref(), md5)));
+            let Some((target, md5)) = target else { break };
+            targets.insert(target, md5);
           }
           changed_tx = refresh_rx.recv() => {
             trace!("refreshing all targets: {:?}", changed_tx.is_some());
             let Some(changed_tx) = changed_tx else { break };
 
-            join_all(targets.iter().map(|target| {
+            join_all(targets.iter().map(|(target, md5)| {
               let mut cp = cp.clone();
               let config_tx = config_tx.clone();
               let changed_tx = changed_tx.clone();
               async move {
                 if let Ok(config) = cp.get(&target.data_id, &target.group, target.tenant.as_deref()).await {
-                  // it's ok if the config_tx.send failed
-                  // it means the long connection is disconnected but might be reconnected later
-                  config_tx.send((target.clone(), config, changed_tx.clone())).ok();
+                  let new_md5 = config.md5();
+                  if new_md5 != md5 {
+                    trace!(md5, new_md5, "md5 not match");
+                    // it's ok if the config_tx.send failed
+                    // it means the long connection is disconnected but might be reconnected later
+                    config_tx.send((target.clone(), config, changed_tx.clone())).ok();
+                  }
                 }
               }
             })).await;
