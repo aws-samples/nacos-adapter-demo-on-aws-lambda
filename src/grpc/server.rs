@@ -113,10 +113,12 @@ impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
         }
       }
       CONFIG_BATCH_LISTEN_REQUEST => {
+        let mut config_rx = self.config_tx.subscribe();
         let body_vec = payload.body.unwrap_or_default().value;
         let request: ConfigBatchListenRequest = serde_json::from_slice(&body_vec)?;
         let mut target_map = HashMap::new();
         for item in request.config_listen_contexts {
+          debug!(data_id = %item.data_id, group = %item.group, tenant = %item.tenant, "ConfigBatchListenRequest");
           let target = Arc::new(Target {
             data_id: item.data_id,
             group: item.group,
@@ -135,8 +137,9 @@ impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
           ..Default::default()
         };
         loop {
-          match self.config_tx.subscribe().recv().await {
+          match config_rx.recv().await {
             Ok((target, config, changed_tx)) => {
+              trace!(target = %target.as_ref(), "refreshed, checking md5");
               let md5 = target_map.get(&target).unwrap().as_ref();
               let new_md5 = config.md5();
               if md5 != config.md5() {
@@ -162,6 +165,7 @@ impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
               response.result_code = ERROR_CODE;
               response.error_code = ERROR_CODE;
               response.message = Some(err.to_string());
+              warn!("ConfigBatchListenRequest error:{}", err);
               return Ok(HandlerResult::success(PayloadUtils::build_payload(
                 "ErrorResponse",
                 serde_json::to_string(&response)?,
