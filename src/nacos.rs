@@ -1,5 +1,5 @@
 use crate::{
-  config::{provider::ConfigProvider, target::Target, Config},
+  config::{provider::ConfigProvider, target::Target},
   constant::{
     CONFIG_NOT_FOUND_2, DATA_ID_NOT_FOUND_1, DATA_ID_NOT_FOUND_2, GROUP_NOT_FOUND_1,
     GROUP_NOT_FOUND_2,
@@ -33,7 +33,7 @@ struct ListeningConfig {
 pub async fn start_nacos_adapter(
   listener: TcpListener,
   target_tx: mpsc::Sender<(Arc<Target>, String)>,
-  config_tx: broadcast::Sender<(Arc<Target>, Arc<Config>, mpsc::Sender<()>)>,
+  config_tx: broadcast::Sender<(Arc<Target>, mpsc::Sender<()>)>,
   cp: impl ConfigProvider + Clone + Send + 'static,
 ) {
   macro_rules! handle_get_config {
@@ -188,7 +188,7 @@ pub async fn start_nacos_adapter(
                   return (StatusCode::OK, "".to_string())
                 }
                 res = config_rx.recv() => {
-                  if let Ok((target, _config, changed_tx)) = res {
+                  if let Ok((target, changed_tx)) = res {
                     let res = encode(&target.to_string()).to_string();
                     trace!(res, "update");
                     changed_tx.send(()).await.expect("changed_rx should not be dropped");

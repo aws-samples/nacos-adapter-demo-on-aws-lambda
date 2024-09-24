@@ -11,7 +11,7 @@ use super::{
   },
   utils::{HandlerResult, PayloadUtils},
 };
-use crate::config::{provider::ConfigProvider, target::Target, Config};
+use crate::config::{provider::ConfigProvider, target::Target};
 use lambda_extension::{
   tracing::{debug, warn},
   Error,
@@ -172,7 +172,7 @@ impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
 pub fn spawn(
   addr: SocketAddr,
   target_tx: mpsc::Sender<(Arc<Target>, String)>,
-  config_tx: broadcast::Sender<(Arc<Target>, Arc<Config>, mpsc::Sender<()>)>,
+  config_tx: broadcast::Sender<(Arc<Target>, mpsc::Sender<()>)>,
   cp: impl ConfigProvider + Clone + Send + 'static,
 ) {
   tokio::spawn(async move {
@@ -206,7 +206,7 @@ impl<CP: ConfigProvider + Clone + Send + 'static> Request for RequestServerImpl<
 }
 
 pub struct BiRequestStreamServerImpl {
-  config_tx: broadcast::Sender<(Arc<Target>, Arc<Config>, mpsc::Sender<()>)>,
+  config_tx: broadcast::Sender<(Arc<Target>, mpsc::Sender<()>)>,
 }
 
 #[tonic::async_trait]
@@ -234,7 +234,7 @@ impl BiRequestStream for BiRequestStreamServerImpl {
           request_id.to_string()
         }
       };
-      while let Ok((target, config, changed_tx)) = config_rx.recv().await {
+      while let Ok((target, changed_tx)) = config_rx.recv().await {
         let request = ConfigChangeNotifyRequest {
           group: target.group.to_owned().into(),
           data_id: target.data_id.to_owned().into(),

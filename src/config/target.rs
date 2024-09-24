@@ -4,7 +4,7 @@ use futures::future::join_all;
 use lambda_extension::tracing::trace;
 use tokio::sync::{broadcast, mpsc};
 
-use super::{provider::ConfigProvider, Config};
+use super::provider::ConfigProvider;
 
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub struct Target {
@@ -30,7 +30,7 @@ pub fn spawn_target_manager(
   mut refresh_rx: mpsc::Receiver<mpsc::Sender<()>>,
 ) -> (
   mpsc::Sender<(Arc<Target>, String)>,
-  broadcast::Sender<(Arc<Target>, Arc<Config>, mpsc::Sender<()>)>,
+  broadcast::Sender<(Arc<Target>, mpsc::Sender<()>)>,
 ) {
   // this channel is used to register listening targets to the target manager
   let (target_tx, mut target_rx) = mpsc::channel::<(Arc<Target>, String)>(1);
@@ -64,7 +64,7 @@ pub fn spawn_target_manager(
                     trace!(md5, new_md5, "md5 not match");
                     // it's ok if the config_tx.send failed
                     // it means the long connection is disconnected but might be reconnected later
-                    config_tx.send((target.clone(), config, changed_tx.clone())).ok();
+                    config_tx.send((target.clone(), changed_tx.clone())).ok();
                   }
                 }
               }
