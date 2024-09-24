@@ -1,7 +1,7 @@
 //! This file is copied from
 //! https://github.com/nacos-group/r-nacos/blob/6bb9ab85f7adccdc3bacf59dbda8c32a5daaafd8/src/grpc/nacos_proto.rs
 
-#![allow(non_camel_case_types)]
+#![allow(non_camel_case_types, non_snake_case)]
 
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Any {
