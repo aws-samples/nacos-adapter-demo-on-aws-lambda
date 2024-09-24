@@ -21,34 +21,56 @@ use std::{net::SocketAddr, sync::Arc};
 use tokio::sync::{broadcast, mpsc};
 use tonic::transport::Server;
 
-lazy_static! {
-  pub(crate) static ref CONFIG_TYPE_TEXT: Arc<String> = Arc::new("text".to_string());
-  pub(crate) static ref CONFIG_TYPE_JSON: Arc<String> = Arc::new("json".to_string());
-  pub(crate) static ref CONFIG_TYPE_XML: Arc<String> = Arc::new("xml".to_string());
-  pub(crate) static ref CONFIG_TYPE_YAML: Arc<String> = Arc::new("yaml".to_string());
-  pub(crate) static ref CONFIG_TYPE_HTML: Arc<String> = Arc::new("html".to_string());
-  pub(crate) static ref CONFIG_TYPE_PROPERTIES: Arc<String> = Arc::new("properties".to_string());
-  pub(crate) static ref CONFIG_TYPE_TOML: Arc<String> = Arc::new("toml".to_string());
+pub fn spawn(
+  addr: SocketAddr,
+  target_tx: mpsc::Sender<(Target, String)>,
+  config_tx: broadcast::Sender<(Target, mpsc::Sender<()>)>,
+  cp: impl ConfigProvider + 'static,
+) {
+  tokio::spawn(async move {
+    let request_server = RequestServerImpl { cp, target_tx };
+    let bi_request_stream_server = BiRequestStreamServerImpl { config_tx };
+    Server::builder()
+      .add_service(RequestServer::new(request_server))
+      .add_service(BiRequestStreamServer::new(bi_request_stream_server))
+      .serve(addr)
+      .await
+      .unwrap();
+  });
 }
 
+// https://github.com/nacos-group/r-nacos/blob/c74dfab019b0771e38a28be7821b08021afd10c4/src/config/config_type.rs#L3
+lazy_static! {
+  pub(crate) static ref CONFIG_TYPE_TEXT: Arc<String> = Arc::new("text".to_string());
+  // pub(crate) static ref CONFIG_TYPE_JSON: Arc<String> = Arc::new("json".to_string());
+  // pub(crate) static ref CONFIG_TYPE_XML: Arc<String> = Arc::new("xml".to_string());
+  // pub(crate) static ref CONFIG_TYPE_YAML: Arc<String> = Arc::new("yaml".to_string());
+  // pub(crate) static ref CONFIG_TYPE_HTML: Arc<String> = Arc::new("html".to_string());
+  // pub(crate) static ref CONFIG_TYPE_PROPERTIES: Arc<String> = Arc::new("properties".to_string());
+  // pub(crate) static ref CONFIG_TYPE_TOML: Arc<String> = Arc::new("toml".to_string());
+}
+
+// https://github.com/nacos-group/r-nacos/blob/c74dfab019b0771e38a28be7821b08021afd10c4/src/grpc/handler/mod.rs#L44
 pub(crate) const HEALTH_CHECK_REQUEST: &str = "HealthCheckRequest";
 pub(crate) const SERVER_CHECK_REQUEST: &str = "ServerCheckRequest";
 pub(crate) const CONFIG_QUERY_REQUEST: &str = "ConfigQueryRequest";
 pub(crate) const CONFIG_BATCH_LISTEN_REQUEST: &str = "ConfigBatchListenRequest";
 
-pub struct RequestServerImpl<CP> {
+struct RequestServerImpl<CP> {
   target_tx: mpsc::Sender<(Target, String)>,
   cp: CP,
 }
 
 impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
-  pub async fn handle(&self, payload: Payload) -> Result<HandlerResult, Error> {
+  async fn handle(&self, payload: Payload) -> Result<HandlerResult, Error> {
     let Some(url) = PayloadUtils::get_payload_type(&payload) else {
+      // https://github.com/nacos-group/r-nacos/blob/c74dfab019b0771e38a28be7821b08021afd10c4/src/grpc/handler/mod.rs#L237
       return Ok(HandlerResult::error(302u16, "empty type url".to_owned()));
     };
 
     match url.as_str() {
       HEALTH_CHECK_REQUEST => {
+        // https://github.com/nacos-group/r-nacos/blob/c74dfab019b0771e38a28be7821b08021afd10c4/src/grpc/handler/mod.rs#L242
         let response = BaseResponse::build_success_response();
         Ok(HandlerResult::success(PayloadUtils::build_payload(
           "HealthCheckResponse",
@@ -56,6 +78,7 @@ impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
         )))
       }
       SERVER_CHECK_REQUEST => {
+        // https://github.com/nacos-group/r-nacos/blob/c74dfab019b0771e38a28be7821b08021afd10c4/src/grpc/handler/mod.rs#L200
         let response = ServerCheckResponse {
           result_code: SUCCESS_CODE,
           connection_id: Some("".to_owned()),
@@ -68,7 +91,7 @@ impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
       }
       CONFIG_QUERY_REQUEST => {
         let body_vec = payload.body.unwrap_or_default().value;
-        let request: ConfigQueryRequest = serde_json::from_slice(&body_vec).unwrap();
+        let request: ConfigQueryRequest = serde_json::from_slice(&body_vec)?;
         let mut response = ConfigQueryResponse {
           request_id: request.request_id,
           ..Default::default()
@@ -94,15 +117,18 @@ impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
           Ok(config) => {
             response.result_code = SUCCESS_CODE;
             response.content = config.content().to_owned().into();
-            response.content_type = Some(CONFIG_TYPE_TEXT.clone());
-            response.last_modified = 0;
+            response.content_type = Some(CONFIG_TYPE_TEXT.clone()); // TODO: use correct content type? does this matter?
+            response.last_modified = 0; // TODO: does this matter?
             response.md5 = Some(config.md5().to_owned().into());
+
+            // https://github.com/nacos-group/r-nacos/blob/c74dfab019b0771e38a28be7821b08021afd10c4/src/grpc/handler/config_query.rs#L85
             Ok(HandlerResult::success(PayloadUtils::build_payload(
               "ConfigQueryResponse",
               serde_json::to_string(&response)?,
             )))
           }
           Err(err) => {
+            // https://github.com/nacos-group/r-nacos/blob/c74dfab019b0771e38a28be7821b08021afd10c4/src/grpc/handler/config_query.rs#L90
             response.result_code = ERROR_CODE;
             response.error_code = ERROR_CODE;
             response.message = Some(err.to_string());
@@ -146,21 +172,21 @@ impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
             };
             response.changed_configs.push(obj);
           }
-          self
-            .target_tx
-            .send((target, item.md5.to_string()))
-            .await
-            .unwrap();
+          // register target to target_manager
+          self.target_tx.send((target, item.md5.to_string())).await?;
         }
 
         response.result_code = SUCCESS_CODE;
+
+        // https://github.com/nacos-group/r-nacos/blob/c74dfab019b0771e38a28be7821b08021afd10c4/src/grpc/handler/config_change_batch_listen.rs#L74
         Ok(HandlerResult::success(PayloadUtils::build_payload(
           "ConfigChangeBatchListenResponse",
           serde_json::to_string(&response)?,
         )))
       }
       _ => {
-        warn!("InvokerHandler not fund handler,type:{}", url);
+        warn!("InvokerHandler not found for type:{}", url);
+        // https://github.com/nacos-group/r-nacos/blob/c74dfab019b0771e38a28be7821b08021afd10c4/src/grpc/handler/mod.rs#L232
         Ok(HandlerResult::error(
           302u16,
           format!("{} RequestHandler Not Found", url),
@@ -168,24 +194,6 @@ impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
       }
     }
   }
-}
-
-pub fn spawn(
-  addr: SocketAddr,
-  target_tx: mpsc::Sender<(Target, String)>,
-  config_tx: broadcast::Sender<(Target, mpsc::Sender<()>)>,
-  cp: impl ConfigProvider + 'static,
-) {
-  tokio::spawn(async move {
-    let request_server = RequestServerImpl { cp, target_tx };
-    let bi_request_stream_server = BiRequestStreamServerImpl { config_tx };
-    Server::builder()
-      .add_service(RequestServer::new(request_server))
-      .add_service(BiRequestStreamServer::new(bi_request_stream_server))
-      .serve(addr)
-      .await
-      .unwrap();
-  });
 }
 
 #[tonic::async_trait]
@@ -198,10 +206,13 @@ impl<CP: ConfigProvider + 'static> Request for RequestServerImpl<CP> {
     let handle_result = self.handle(payload).await;
     match handle_result {
       Ok(res) => Ok(tonic::Response::new(res.payload)),
-      Err(e) => Ok(tonic::Response::new(PayloadUtils::build_error_payload(
-        500u16,
-        e.to_string(),
-      ))),
+      Err(e) => {
+        // https://github.com/nacos-group/r-nacos/blob/c74dfab019b0771e38a28be7821b08021afd10c4/src/grpc/server.rs#L192
+        Ok(tonic::Response::new(PayloadUtils::build_error_payload(
+          500u16,
+          e.to_string(),
+        )))
+      }
     }
   }
 }
@@ -217,13 +228,14 @@ impl BiRequestStream for BiRequestStreamServerImpl {
 
   async fn request_bi_stream(
     &self,
-    request: tonic::Request<tonic::Streaming<Payload>>,
+    _request: tonic::Request<tonic::Streaming<Payload>>,
   ) -> Result<tonic::Response<Self::requestBiStreamStream>, tonic::Status> {
-    let (tx, rx) = tokio::sync::mpsc::channel(10);
-    let r_stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+    let (payload_tx, payload_rx) = tokio::sync::mpsc::channel(10);
+    let r_stream = tokio_stream::wrappers::ReceiverStream::new(payload_rx);
 
     let mut config_rx = self.config_tx.subscribe();
     tokio::spawn(async move {
+      // https://github.com/nacos-group/r-nacos/blob/c74dfab019b0771e38a28be7821b08021afd10c4/src/grpc/bistream_manage.rs#L87
       let mut next_request_id = {
         let mut request_id: u64 = 0;
         move || {
@@ -235,20 +247,23 @@ impl BiRequestStream for BiRequestStreamServerImpl {
           request_id.to_string()
         }
       };
+
       while let Ok((target, changed_tx)) = config_rx.recv().await {
         let request = ConfigChangeNotifyRequest {
-          group: target.group.to_owned(),
-          data_id: target.data_id.to_owned(),
-          tenant: target.tenant().unwrap_or("").to_owned().into(),
+          group: target.group,
+          data_id: target.data_id,
+          tenant: target.tenant.unwrap_or("".to_string().into()),
           request_id: Some(next_request_id()),
           module: Some(CONFIG_MODEL.to_string()),
           ..Default::default()
         };
+        // https://github.com/nacos-group/r-nacos/blob/c74dfab019b0771e38a28be7821b08021afd10c4/src/grpc/bistream_manage.rs#L251
         let payload = PayloadUtils::build_payload(
           "ConfigChangeNotifyRequest",
           serde_json::to_string(&request).unwrap(),
         );
-        tx.send(Ok(payload)).await.unwrap();
+        payload_tx.send(Ok(payload)).await.unwrap();
+        // notify the lambda extension to sleep
         changed_tx.send(()).await.unwrap();
       }
     });
