@@ -33,7 +33,7 @@ async fn main() -> Result<(), Error> {
   let port = parse_env("AWS_LAMBDA_NACOS_ADAPTER_PORT", 8848);
   let cache_size = parse_env("AWS_LAMBDA_NACOS_ADAPTER_CACHE_SIZE", 64);
   let delay_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_DELAY_MS", 10);
-  let cooldown_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS", 5000);
+  let cooldown_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS", 0);
 
   let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port)).await?;
   let (refresh_tx, refresh_rx) = mpsc::channel(1);

@@ -41,7 +41,7 @@ TODO
 - `AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS`
   - The cooldown in milliseconds before the adapter refresh the configuration again.
   - If you want your configuration to be applied as soon as possible, reduce this value. If you want to reduce the number of requests to the origin server, increase this value.
-  - Default: `5000`
+  - Default: `0`
 
 ## Limits
 
