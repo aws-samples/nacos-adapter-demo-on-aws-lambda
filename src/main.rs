@@ -116,6 +116,6 @@ fn parse_env<T: FromStr + Display + Copy>(name: &str, default: T) -> T {
     .ok()
     .and_then(|p| p.parse().ok())
     .unwrap_or(default);
-  debug!("{}={}", name, default);
+  debug!("{}={}", name, v);
   v
 }
