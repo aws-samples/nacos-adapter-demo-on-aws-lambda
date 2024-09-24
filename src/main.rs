@@ -35,7 +35,7 @@ async fn main() -> Result<(), Error> {
   // start mock nacos, try proxy mode first, otherwise use fs mode
   let refresh_tx = if let Ok(origin) = env::var("AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS") {
     debug!("AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS={}", origin);
-    let cp = ProxyConfigProvider::new(origin);
+    let cp = ProxyConfigProvider::new(cache_size, origin);
     start_mock_nacos(port, cp).await?
   } else {
     let prefix = env::var("AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH")

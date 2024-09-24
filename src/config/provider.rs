@@ -9,5 +9,6 @@ pub trait ConfigProvider: Clone + Send + Sync {
     data_id: &str,
     group: &str,
     tenant: Option<&str>,
+    refresh: bool,
   ) -> impl Future<Output = Result<Arc<Config>, Error>> + Send;
 }

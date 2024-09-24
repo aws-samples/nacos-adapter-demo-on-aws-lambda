@@ -62,7 +62,7 @@ pub fn spawn_target_manager(
               let config_tx = config_tx.clone();
               let changed_tx = changed_tx.clone();
               async move {
-                if let Ok(config) = cp.get(&target.data_id, &target.group, target.tenant()).await {
+                if let Ok(config) = cp.get(&target.data_id, &target.group, target.tenant(), true).await {
                   let new_md5 = config.md5();
                   if new_md5 != md5 {
                     debug!(md5, new_md5, "md5 mismatch");

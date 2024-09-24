@@ -34,6 +34,7 @@ impl ConfigProvider for FsConfigProvider {
     data_id: &str,
     group: &str,
     tenant: Option<&str>,
+    refresh: bool,
   ) -> Result<Arc<Config>, Error> {
     let path = format!(
       "{}{}/{}/{}",
@@ -43,16 +44,27 @@ impl ConfigProvider for FsConfigProvider {
       data_id
     );
 
-    // check cache by mtime
-    let mtime = fs::metadata(&path).await?.mtime();
-    if let Some(value) = self.cache.get(&path).await {
-      if value.mtime == mtime {
-        // cache hit
+    let mtime = if !refresh {
+      // if not refresh and value in cache, return it
+      if let Some(value) = self.cache.get(&path).await {
         return Ok(value.config);
       }
-    }
+      // not in cache, get mtime
+      fs::metadata(&path).await?.mtime()
+    } else {
+      // check cache by mtime
+      let mtime = fs::metadata(&path).await?.mtime();
+      if let Some(value) = self.cache.get(&path).await {
+        if value.mtime == mtime {
+          // mtime match, cache hit
+          return Ok(value.config);
+        }
+      }
+      // else, not in cache or mtime mismatch, forward mtime
+      mtime
+    };
 
-    // cache miss
+    // read new content
     let content = fs::read_to_string(&path).await?;
     let config = Arc::new(Config::new(content));
     self

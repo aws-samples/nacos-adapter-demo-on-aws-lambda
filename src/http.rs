@@ -47,7 +47,7 @@ async fn start(
 ) {
   macro_rules! handle_get_config {
     ($data_id:expr, $group:expr, $tenant:expr, $cp:expr) => {{
-      match $cp.get($data_id, $group, $tenant).await {
+      match $cp.get($data_id, $group, $tenant, false).await {
         Ok(config) => Some(config.content().to_owned()),
         Err(e) => {
           let data_id = $data_id;
@@ -155,7 +155,7 @@ async fn start(
                   .await
                   .unwrap();
                 let cached = cp
-                  .get(&target.data_id, &target.group, target.tenant())
+                  .get(&target.data_id, &target.group, target.tenant(), false)
                   .await
                   .unwrap();
                 let cached_md5 = cached.md5();

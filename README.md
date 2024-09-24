@@ -31,7 +31,6 @@ TODO
   - Default: `8848`
 - `AWS_LAMBDA_NACOS_ADAPTER_CACHE_SIZE`
   - The maximum number of entries that the cache can hold.
-  - Only effective in [fs mode](#fs-mode).
   - Default: `64`
 - `AWS_LAMBDA_NACOS_ADAPTER_DELAY_MS`
   - The delay in milliseconds after the configuration refresh, before the adapter mark this invocation as done.

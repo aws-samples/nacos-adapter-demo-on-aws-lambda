@@ -87,6 +87,7 @@ impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
             } else {
               Some(&request.tenant)
             },
+            false,
           )
           .await
         {
@@ -135,7 +136,7 @@ impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
           let cache = self
             .cp
             .clone()
-            .get(&target.data_id, &target.group, target.tenant())
+            .get(&target.data_id, &target.group, target.tenant(), false)
             .await?;
           if cache.md5() != item.md5.as_str() {
             let obj = ConfigContext {
