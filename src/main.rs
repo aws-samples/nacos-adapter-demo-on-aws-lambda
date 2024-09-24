@@ -89,7 +89,7 @@ async fn main() -> Result<(), Error> {
 
 async fn start_mock_nacos(
   port: u16,
-  cp: impl ConfigProvider + Clone + Send + 'static,
+  cp: impl ConfigProvider + 'static,
 ) -> Result<mpsc::Sender<mpsc::Sender<()>>, Error> {
   let (refresh_tx, refresh_rx) = mpsc::channel(1);
   let (target_tx, config_tx) = spawn_target_manager(cp.clone(), refresh_rx);

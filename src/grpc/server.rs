@@ -173,7 +173,7 @@ pub fn spawn(
   addr: SocketAddr,
   target_tx: mpsc::Sender<(Target, String)>,
   config_tx: broadcast::Sender<(Target, mpsc::Sender<()>)>,
-  cp: impl ConfigProvider + Clone + Send + 'static,
+  cp: impl ConfigProvider + 'static,
 ) {
   tokio::spawn(async move {
     let request_server = RequestServerImpl { cp, target_tx };
@@ -188,7 +188,7 @@ pub fn spawn(
 }
 
 #[tonic::async_trait]
-impl<CP: ConfigProvider + Clone + Send + 'static> Request for RequestServerImpl<CP> {
+impl<CP: ConfigProvider + 'static> Request for RequestServerImpl<CP> {
   async fn request(
     &self,
     request: tonic::Request<Payload>,

@@ -30,7 +30,7 @@ impl Target {
 
 #[allow(clippy::type_complexity, reason = "one time use")]
 pub fn spawn_target_manager(
-  cp: impl ConfigProvider + Clone + Send + 'static,
+  cp: impl ConfigProvider + 'static,
   mut refresh_rx: mpsc::Receiver<mpsc::Sender<()>>,
 ) -> (
   mpsc::Sender<(Target, String)>,

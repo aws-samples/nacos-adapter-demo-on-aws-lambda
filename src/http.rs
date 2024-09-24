@@ -34,7 +34,7 @@ pub fn spawn(
   listener: TcpListener,
   target_tx: mpsc::Sender<(Target, String)>,
   config_tx: broadcast::Sender<(Target, mpsc::Sender<()>)>,
-  cp: impl ConfigProvider + Clone + Send + 'static,
+  cp: impl ConfigProvider + 'static,
 ) {
   tokio::spawn(start(listener, target_tx, config_tx, cp));
 }
@@ -43,7 +43,7 @@ async fn start(
   listener: TcpListener,
   target_tx: mpsc::Sender<(Target, String)>,
   config_tx: broadcast::Sender<(Target, mpsc::Sender<()>)>,
-  cp: impl ConfigProvider + Clone + Send + 'static,
+  cp: impl ConfigProvider + 'static,
 ) {
   macro_rules! handle_get_config {
     ($data_id:expr, $group:expr, $tenant:expr, $cp:expr) => {{
