@@ -1,13 +1,10 @@
 mod config;
 mod constant;
 mod grpc;
-mod nacos;
+mod http;
 
-use crate::{
-  config::{fs::FsConfigProvider, proxy::ProxyConfigProvider},
-  nacos::start_nacos_adapter,
-};
-use config::target::spawn_target_manager;
+use crate::config::{fs::FsConfigProvider, proxy::ProxyConfigProvider};
+use config::{provider::ConfigProvider, target::spawn_target_manager};
 use lambda_extension::{
   service_fn,
   tracing::{self, debug, trace},
@@ -41,38 +38,14 @@ async fn main() -> Result<(), Error> {
   if let Ok(origin) = env::var("AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS") {
     debug!("AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS={}", origin);
     let cp = ProxyConfigProvider::new(origin);
-    let (target_tx, config_tx) = spawn_target_manager(cp.clone(), refresh_rx);
-    tokio::spawn(start_nacos_adapter(
-      listener,
-      target_tx.clone(),
-      config_tx.clone(),
-      cp.clone(),
-    ));
-    grpc::spawn(
-      SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port + 1000).into(),
-      target_tx,
-      config_tx,
-      cp,
-    );
+    start_mock_nacos(listener, port, refresh_rx, cp);
   } else {
     let prefix =
       env::var("AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH").unwrap_or("/mnt/efs/nacos/".to_string());
     debug!("AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH={}", prefix);
 
     let cp = FsConfigProvider::new(cache_size, prefix);
-    let (target_tx, config_tx) = spawn_target_manager(cp.clone(), refresh_rx);
-    tokio::spawn(start_nacos_adapter(
-      listener,
-      target_tx.clone(),
-      config_tx.clone(),
-      cp.clone(),
-    ));
-    grpc::spawn(
-      SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port + 1000).into(),
-      target_tx,
-      config_tx,
-      cp,
-    );
+    start_mock_nacos(listener, port, refresh_rx, cp);
   }
 
   let (last_refresh_tx, last_refresh_rx) = watch::channel(Instant::now());
@@ -117,6 +90,22 @@ async fn main() -> Result<(), Error> {
     }
   }))
   .await
+}
+
+fn start_mock_nacos(
+  listener: TcpListener,
+  port: u16,
+  refresh_rx: mpsc::Receiver<mpsc::Sender<()>>,
+  cp: impl ConfigProvider + Clone + Send + 'static,
+) {
+  let (target_tx, config_tx) = spawn_target_manager(cp.clone(), refresh_rx);
+  http::spawn(listener, target_tx.clone(), config_tx.clone(), cp.clone());
+  grpc::spawn(
+    SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port + 1000).into(),
+    target_tx,
+    config_tx,
+    cp,
+  );
 }
 
 fn parse_env<T: FromStr + Display + Copy>(name: &str, default: T) -> T {

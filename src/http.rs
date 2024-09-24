@@ -30,7 +30,16 @@ struct ListeningConfig {
   targets: String,
 }
 
-pub async fn start_nacos_adapter(
+pub fn spawn(
+  listener: TcpListener,
+  target_tx: mpsc::Sender<(Arc<Target>, String)>,
+  config_tx: broadcast::Sender<(Arc<Target>, mpsc::Sender<()>)>,
+  cp: impl ConfigProvider + Clone + Send + 'static,
+) {
+  tokio::spawn(start(listener, target_tx, config_tx, cp));
+}
+
+async fn start(
   listener: TcpListener,
   target_tx: mpsc::Sender<(Arc<Target>, String)>,
   config_tx: broadcast::Sender<(Arc<Target>, mpsc::Sender<()>)>,
