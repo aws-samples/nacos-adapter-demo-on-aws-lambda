@@ -1,25 +1,23 @@
-use crate::config::{provider::ConfigProvider, target::Target, Config};
-
 use super::{
   api_model::{
     BaseResponse, ConfigBatchListenRequest, ConfigChangeBatchListenResponse,
     ConfigChangeNotifyRequest, ConfigContext, ConfigQueryRequest, ConfigQueryResponse,
-    ServerCheckResponse, CONFIG_MODEL, ERROR_CODE, NOT_FOUND, SUCCESS_CODE,
+    ServerCheckResponse, CONFIG_MODEL, ERROR_CODE, SUCCESS_CODE,
   },
   nacos_proto::{
-    self,
     bi_request_stream_server::{BiRequestStream, BiRequestStreamServer},
     request_server::{Request, RequestServer},
     Payload,
   },
   utils::{HandlerResult, PayloadUtils},
 };
+use crate::config::{provider::ConfigProvider, target::Target, Config};
 use lambda_extension::{
-  tracing::{debug, error, info, trace, warn},
+  tracing::{debug, warn},
   Error,
 };
 use lazy_static::lazy_static;
-use std::{borrow::Borrow, collections::HashMap, net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc};
 use tokio::sync::{broadcast, mpsc};
 use tonic::transport::Server;
 
@@ -40,7 +38,6 @@ pub(crate) const CONFIG_BATCH_LISTEN_REQUEST: &str = "ConfigBatchListenRequest";
 
 pub struct RequestServerImpl<CP> {
   target_tx: mpsc::Sender<(Arc<Target>, String)>,
-  config_tx: broadcast::Sender<(Arc<Target>, Arc<Config>, mpsc::Sender<()>)>,
   cp: CP,
 }
 
@@ -116,7 +113,6 @@ impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
         }
       }
       CONFIG_BATCH_LISTEN_REQUEST => {
-        let mut config_rx = self.config_tx.subscribe();
         let body_vec = payload.body.unwrap_or_default().value;
         let request: ConfigBatchListenRequest = serde_json::from_slice(&body_vec)?;
 
@@ -180,12 +176,8 @@ pub fn spawn(
   cp: impl ConfigProvider + Clone + Send + 'static,
 ) {
   tokio::spawn(async move {
-    let request_server = RequestServerImpl {
-      cp: cp.clone(),
-      target_tx,
-      config_tx: config_tx.clone(),
-    };
-    let bi_request_stream_server = BiRequestStreamServerImpl { cp, config_tx };
+    let request_server = RequestServerImpl { cp, target_tx };
+    let bi_request_stream_server = BiRequestStreamServerImpl { config_tx };
     Server::builder()
       .add_service(RequestServer::new(request_server))
       .add_service(BiRequestStreamServer::new(bi_request_stream_server))
@@ -213,15 +205,12 @@ impl<CP: ConfigProvider + Clone + Send + 'static> Request for RequestServerImpl<
   }
 }
 
-pub struct BiRequestStreamServerImpl<CP> {
+pub struct BiRequestStreamServerImpl {
   config_tx: broadcast::Sender<(Arc<Target>, Arc<Config>, mpsc::Sender<()>)>,
-  cp: CP,
 }
 
 #[tonic::async_trait]
-impl<CP: ConfigProvider + Clone + Send + 'static> BiRequestStream
-  for BiRequestStreamServerImpl<CP>
-{
+impl BiRequestStream for BiRequestStreamServerImpl {
   type requestBiStreamStream =
     tokio_stream::wrappers::ReceiverStream<Result<Payload, tonic::Status>>;
 
@@ -229,8 +218,6 @@ impl<CP: ConfigProvider + Clone + Send + 'static> BiRequestStream
     &self,
     request: tonic::Request<tonic::Streaming<Payload>>,
   ) -> Result<tonic::Response<Self::requestBiStreamStream>, tonic::Status> {
-    let client_id = Arc::new(request.remote_addr().unwrap().to_string());
-    let req = request.into_inner();
     let (tx, rx) = tokio::sync::mpsc::channel(10);
     let r_stream = tokio_stream::wrappers::ReceiverStream::new(rx);
 
