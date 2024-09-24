@@ -1,16 +1,16 @@
-use crate::{
-  config::{provider::ConfigProvider, target::Target},
-  constant::{
-    CONFIG_NOT_FOUND_2, DATA_ID_NOT_FOUND_1, DATA_ID_NOT_FOUND_2, GROUP_NOT_FOUND_1,
-    GROUP_NOT_FOUND_2,
-  },
-};
+mod constant;
+
+use crate::config::{provider::ConfigProvider, target::Target};
 use axum::{
   body::Body,
   extract::Query,
   http::{HeaderMap, Request, StatusCode},
   routing::{any, get, post},
   Form, Router,
+};
+use constant::{
+  CONFIG_NOT_FOUND_2, DATA_ID_NOT_FOUND_1, DATA_ID_NOT_FOUND_2, GROUP_NOT_FOUND_1,
+  GROUP_NOT_FOUND_2,
 };
 use futures::future::join_all;
 use lambda_extension::tracing::{debug, error, warn};

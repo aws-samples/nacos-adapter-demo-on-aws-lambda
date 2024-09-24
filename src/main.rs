@@ -1,5 +1,4 @@
 mod config;
-mod constant;
 mod grpc;
 mod http;
 
