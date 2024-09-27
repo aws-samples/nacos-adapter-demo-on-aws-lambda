@@ -29,29 +29,27 @@ async fn main() -> Result<(), Error> {
 
   let port = parse_env("AWS_LAMBDA_NACOS_ADAPTER_PORT", 8848);
   let cache_size = parse_env("AWS_LAMBDA_NACOS_ADAPTER_CACHE_SIZE", 64);
+  let proxy_port = parse_env("AWS_LAMBDA_NACOS_ADAPTER_PROXY_PORT", 0);
   let delay_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_DELAY_MS", 100);
   let cooldown_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS", 0);
-  let proxy_port = parse_env("AWS_LAMBDA_NACOS_ADAPTER_PROXY_PORT", 0);
+  let proxy_cooldown_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_PROXY_COOLDOWN_MS", 0);
+  let proxy_delay_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_PROXY_DELAY_MS", 100);
 
-  // start mock nacos, try proxy mode first, otherwise use fs mode
+  // start mock nacos, try passthrough mode first, otherwise use fs mode
   let refresh_tx = if let Ok(origin) = env::var("AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS") {
     debug!("AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS={}", origin);
-    let cp = PassthroughConfigProvider::new(cache_size, origin);
-    start_mock_nacos(port, cp).await?
+    start_mock_nacos(port, PassthroughConfigProvider::new(cache_size, origin)).await?
   } else {
     let prefix = env::var("AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH")
       .unwrap_or_else(|_| "/mnt/efs/nacos/".to_string());
     debug!("AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH={}", prefix);
-    let cp = FsConfigProvider::new(cache_size, prefix);
-    start_mock_nacos(port, cp).await?
+    start_mock_nacos(port, FsConfigProvider::new(cache_size, prefix)).await?
   };
 
   let (last_refresh_setter, last_refresh) = watch::channel(Instant::now());
 
-  // start lambda runtime api proxy
+  // start lambda runtime api proxy if the proxy mode is enabled
   if proxy_port != 0 {
-    let cooldown_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_PROXY_COOLDOWN_MS", 0);
-    let delay_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_PROXY_DELAY_MS", 100);
     let refresh_tx = refresh_tx.clone();
     let last_refresh_setter = last_refresh_setter.clone();
     let last_refresh = last_refresh.clone();
@@ -72,15 +70,18 @@ async fn main() -> Result<(), Error> {
             let res = LambdaRuntimeApiClient::forward(req).await;
             // now we get the response, we should refresh config before returning the response to the handler
 
-            refresh(
-              &last_refresh_setter,
-              &last_refresh,
-              &refresh_tx,
-              cooldown_ms,
-              delay_ms,
-            )
-            .await
-            .expect("refresh failed");
+            if last_refresh.borrow().elapsed().as_millis() < proxy_cooldown_ms {
+              debug!("proxy cooldown not reached");
+            } else {
+              debug!("proxy cooldown reached");
+              last_refresh_setter
+                .send(Instant::now())
+                .expect("send last_refresh failed");
+
+              refresh(&refresh_tx, proxy_delay_ms)
+                .await
+                .expect("refresh failed");
+            }
 
             res
           }
@@ -101,15 +102,19 @@ async fn main() -> Result<(), Error> {
           // TODO: print nacos logs? user should provide a file path like /tmp/nacos/logs/nacos/config.log
         }
         NextEvent::Invoke(_e) => {
-          // TODO: don't refresh if the proxy is already refreshed
-          refresh(
-            &last_refresh_setter,
-            &last_refresh,
-            &refresh_tx,
-            cooldown_ms,
-            delay_ms,
-          )
-          .await?;
+          let last_refresh = last_refresh.borrow();
+          if proxy_port != 0 && last_refresh.elapsed().as_millis() >= proxy_cooldown_ms {
+            // runtime proxy is enabled and it will refresh the config, skip here
+            return Ok(());
+          }
+
+          if last_refresh.elapsed().as_millis() < cooldown_ms {
+            debug!("cooldown not reached");
+          } else {
+            debug!("cooldown reached");
+            last_refresh_setter.send(Instant::now())?;
+            refresh(&refresh_tx, delay_ms).await?;
+          }
         }
       }
       Ok(()) as Result<(), Error>
@@ -149,22 +154,7 @@ fn parse_env<T: FromStr + Display + Copy>(name: &str, default: T) -> T {
   v
 }
 
-async fn refresh(
-  last_refresh_setter: &watch::Sender<Instant>,
-  last_refresh: &watch::Receiver<Instant>,
-  refresh_tx: &mpsc::Sender<mpsc::Sender<()>>,
-  cooldown_ms: u128,
-  delay_ms: u64,
-) -> Result<(), Error> {
-  if last_refresh.borrow().elapsed().as_millis() < cooldown_ms {
-    debug!("cooldown not reached");
-    // no need to refresh config, just return
-    return Ok(());
-  }
-
-  debug!("cooldown reached");
-  last_refresh_setter.send(Instant::now())?;
-
+async fn refresh(refresh_tx: &mpsc::Sender<mpsc::Sender<()>>, delay_ms: u64) -> Result<(), Error> {
   let (changed_tx, mut changed_rx) = mpsc::channel::<()>(1);
   refresh_tx.send(changed_tx).await?;
   let mut changed = false;
