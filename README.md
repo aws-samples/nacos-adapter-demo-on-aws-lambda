@@ -35,8 +35,8 @@ TODO
 - `AWS_LAMBDA_NACOS_ADAPTER_DELAY_MS`
   - The delay in milliseconds after the configuration refresh, before the adapter mark this invocation as done.
   - This is useful to make sure the configuration is applied to your handler function before the next invocation. If this is too small and your handler function returns too quickly, your handler function may not get the updated configuration.
-  - This won't affect your function's response time, but it may increase your function's duration.
-  - Default: `10`
+  - This won't affect your function's response time, but if the config is changed, it may increase your function's duration.
+  - Default: `100`
 - `AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS`
   - The cooldown in milliseconds before the adapter refresh the configuration again.
   - If you want your configuration to be applied as soon as possible, reduce this value. If you want to reduce the number of requests to the origin server, increase this value.
