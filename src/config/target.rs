@@ -68,7 +68,9 @@ pub fn spawn_target_manager(
                     debug!(md5, new_md5, "md5 mismatch");
                     // it's ok if the config_tx.send failed
                     // it means the long connection is disconnected but might be reconnected later
-                    config_tx.send((target.clone(), changed_tx.clone())).ok();
+                    if config_tx.send((target.clone(), changed_tx.clone())).is_err() {
+                      debug!("config_tx.send failed, which means no long connection is listening");
+                    }
                   }
                 }
               }

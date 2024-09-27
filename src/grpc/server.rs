@@ -249,6 +249,7 @@ impl BiRequestStream for BiRequestStreamServerImpl {
       };
 
       while let Ok((target, changed_tx)) = config_rx.recv().await {
+        debug!("notifying config change: {:?}", target);
         // TODO: check if the updated config is one of we are listening
         let request = ConfigChangeNotifyRequest {
           group: target.group,
