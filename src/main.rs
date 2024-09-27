@@ -59,7 +59,6 @@ async fn main() -> Result<(), Error> {
       MockLambdaRuntimeApiServer::bind(proxy_port)
         .await
         .serve(move |req| {
-          // TODO: simplify code
           let refresh_tx = refresh_tx.clone();
           let last_refresh_setter = last_refresh_setter.clone();
           let last_refresh = last_refresh.clone();
@@ -73,32 +72,15 @@ async fn main() -> Result<(), Error> {
             let res = LambdaRuntimeApiClient::forward(req).await;
             // now we get the response, we should refresh config before returning the response to the handler
 
-            if last_refresh.borrow().elapsed().as_millis() < cooldown_ms {
-              debug!("cooldown not reached");
-            } else {
-              debug!("cooldown reached");
-              last_refresh_setter
-                .send(Instant::now())
-                .expect("send last_refresh failed");
-
-              let (changed_tx, mut changed_rx) = mpsc::channel::<()>(1);
-              refresh_tx
-                .send(changed_tx)
-                .await
-                .expect("send refresh failed");
-              let mut changed = false;
-              while let Some(()) = changed_rx.recv().await {
-                changed = true;
-              }
-              // now changed_rx.recv() returns None, meaning all changed_tx are dropped and the refresh is done
-              debug!(changed, "refresh done");
-
-              // only delay if config changed
-              if changed && delay_ms > 0 {
-                debug!("sleeping for {}ms", delay_ms);
-                sleep(Duration::from_millis(delay_ms)).await;
-              }
-            }
+            refresh(
+              &last_refresh_setter,
+              &last_refresh,
+              &refresh_tx,
+              cooldown_ms,
+              delay_ms,
+            )
+            .await
+            .expect("refresh failed");
 
             res
           }
@@ -120,29 +102,14 @@ async fn main() -> Result<(), Error> {
         }
         NextEvent::Invoke(_e) => {
           // TODO: don't refresh if the proxy is already refreshed
-          if last_refresh.borrow().elapsed().as_millis() < cooldown_ms {
-            debug!("cooldown not reached");
-            // no need to refresh config, just return
-            return Ok(());
-          }
-
-          debug!("cooldown reached");
-          last_refresh_setter.send(Instant::now())?;
-
-          let (changed_tx, mut changed_rx) = mpsc::channel::<()>(1);
-          refresh_tx.send(changed_tx).await?;
-          let mut changed = false;
-          while let Some(()) = changed_rx.recv().await {
-            changed = true;
-          }
-          // now changed_rx.recv() returns None, meaning all changed_tx are dropped and the refresh is done
-          debug!(changed, "refresh done");
-
-          // only delay if config changed
-          if changed && delay_ms > 0 {
-            debug!("sleeping for {}ms", delay_ms);
-            sleep(Duration::from_millis(delay_ms)).await;
-          }
+          refresh(
+            &last_refresh_setter,
+            &last_refresh,
+            &refresh_tx,
+            cooldown_ms,
+            delay_ms,
+          )
+          .await?;
         }
       }
       Ok(()) as Result<(), Error>
@@ -180,4 +147,38 @@ fn parse_env<T: FromStr + Display + Copy>(name: &str, default: T) -> T {
     .unwrap_or(default);
   debug!("{}={}", name, v);
   v
+}
+
+async fn refresh(
+  last_refresh_setter: &watch::Sender<Instant>,
+  last_refresh: &watch::Receiver<Instant>,
+  refresh_tx: &mpsc::Sender<mpsc::Sender<()>>,
+  cooldown_ms: u128,
+  delay_ms: u64,
+) -> Result<(), Error> {
+  if last_refresh.borrow().elapsed().as_millis() < cooldown_ms {
+    debug!("cooldown not reached");
+    // no need to refresh config, just return
+    return Ok(());
+  }
+
+  debug!("cooldown reached");
+  last_refresh_setter.send(Instant::now())?;
+
+  let (changed_tx, mut changed_rx) = mpsc::channel::<()>(1);
+  refresh_tx.send(changed_tx).await?;
+  let mut changed = false;
+  while let Some(()) = changed_rx.recv().await {
+    changed = true;
+  }
+  // now changed_rx.recv() returns None, meaning all changed_tx are dropped and the refresh is done
+  debug!(changed, "refresh done");
+
+  // only delay if config changed
+  if changed && delay_ms > 0 {
+    debug!("sleeping for {}ms", delay_ms);
+    sleep(Duration::from_millis(delay_ms)).await;
+  }
+
+  Ok(())
 }
