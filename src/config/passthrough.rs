@@ -5,23 +5,23 @@ use reqwest::Url;
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
-pub struct ProxyConfigProvider {
+pub struct PassthroughConfigProvider {
   /// Moka cache, which is cheap to clone.
   cache: Cache<String, Arc<Config>>,
   /// Wrapped in an Arc to make [`Self`] cheap to clone.
   base: Arc<String>,
 }
 
-impl ProxyConfigProvider {
+impl PassthroughConfigProvider {
   pub fn new(size: u64, addr: String) -> Self {
-    ProxyConfigProvider {
+    PassthroughConfigProvider {
       cache: Cache::new(size),
       base: Arc::new(format!("http://{}/nacos/v1/cs/configs", addr)),
     }
   }
 }
 
-impl ConfigProvider for ProxyConfigProvider {
+impl ConfigProvider for PassthroughConfigProvider {
   async fn get(
     &mut self,
     data_id: &str,

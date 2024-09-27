@@ -2,7 +2,7 @@ mod config;
 mod grpc;
 mod http;
 
-use crate::config::{fs::FsConfigProvider, proxy::ProxyConfigProvider};
+use crate::config::{fs::FsConfigProvider, passthrough::PassthroughConfigProvider};
 use aws_lambda_runtime_proxy::{LambdaRuntimeApiClient, MockLambdaRuntimeApiServer};
 use config::{provider::ConfigProvider, target::spawn_target_manager};
 use lambda_extension::{
@@ -35,9 +35,8 @@ async fn main() -> Result<(), Error> {
 
   // start mock nacos, try proxy mode first, otherwise use fs mode
   let refresh_tx = if let Ok(origin) = env::var("AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS") {
-    // TODO: rename to passthrough mode
     debug!("AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS={}", origin);
-    let cp = ProxyConfigProvider::new(cache_size, origin);
+    let cp = PassthroughConfigProvider::new(cache_size, origin);
     start_mock_nacos(port, cp).await?
   } else {
     let prefix = env::var("AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH")

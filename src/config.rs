@@ -1,6 +1,6 @@
 pub mod fs;
+pub mod passthrough;
 pub mod provider;
-pub mod proxy;
 pub mod target;
 
 #[derive(Clone, Debug)]

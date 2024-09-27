@@ -4,7 +4,7 @@ In AWS Lambda only `/tmp` is writable, so you have to configure `JM.LOG.PATH` an
 
 ## Build
 
-### Proxy Mode
+### Passthrough Mode
 
 ```sh
 rm -rf ./layer

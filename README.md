@@ -4,7 +4,7 @@ Let your AWS Lambda functions listen to your configuration changes on Nacos.
 
 ## Usage
 
-### Proxy Mode
+### Passthrough Mode
 
 TODO
 
@@ -18,7 +18,7 @@ TODO
 
 - `AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS`
   - The address of the origin Nacos server.
-  - Set this to enable the adapter to run in [proxy mode](#proxy-mode).
+  - Set this to enable the adapter to run in [passthrough mode](#passthrough-mode).
 - `AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH`
   - The path to your configuration file.
   - Set this to enable the adapter to run in [fs mode](#fs-mode).
