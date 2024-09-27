@@ -53,7 +53,9 @@ async fn main() -> Result<(), Error> {
 
     async move {
       match event.next {
-        NextEvent::Shutdown(_e) => {}
+        NextEvent::Shutdown(_e) => {
+          // TODO: print nacos logs? user should provide a file path like /tmp/nacos/logs/nacos/config.log
+        }
         NextEvent::Invoke(_e) => {
           if last_refresh.borrow().elapsed().as_millis() < cooldown_ms {
             debug!("cooldown not reached");
