@@ -13,8 +13,8 @@ mkdir -p ./layer/extensions
 cargo build --release --target x86_64-unknown-linux-musl
 cp ../../target/x86_64-unknown-linux-musl/release/aws-lambda-nacos-adapter ./layer/extensions/
 
-cp ../../scripts/proxy-entry.sh ./layer
-chmod +x ./layer/proxy-entry.sh
+cp ../../scripts/sync-entry.sh ./layer
+chmod +x ./layer/sync-entry.sh
 
 sam build -u -t template-passthrough.yml
 ```
