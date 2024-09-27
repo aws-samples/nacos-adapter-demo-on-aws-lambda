@@ -29,11 +29,11 @@ async fn main() -> Result<(), Error> {
 
   let port = parse_env("AWS_LAMBDA_NACOS_ADAPTER_PORT", 8848);
   let cache_size = parse_env("AWS_LAMBDA_NACOS_ADAPTER_CACHE_SIZE", 64);
-  let proxy_port = parse_env("AWS_LAMBDA_NACOS_ADAPTER_PROXY_PORT", 0);
   let delay_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_DELAY_MS", 100);
   let cooldown_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS", 0);
-  let proxy_cooldown_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_PROXY_COOLDOWN_MS", 0);
-  let proxy_delay_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_PROXY_DELAY_MS", 100);
+  let sync_port = parse_env("AWS_LAMBDA_NACOS_ADAPTER_SYNC_PORT", 0);
+  let sync_cooldown_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_SYNC_COOLDOWN_MS", 0);
+  let sync_delay_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_SYNC_DELAY_MS", 100);
 
   // start mock nacos, try passthrough mode first, otherwise use fs mode
   let refresh_tx = if let Ok(origin) = env::var("AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS") {
@@ -48,13 +48,13 @@ async fn main() -> Result<(), Error> {
 
   let (last_refresh_setter, last_refresh) = watch::channel(Instant::now());
 
-  // start lambda runtime api proxy if the proxy mode is enabled
-  if proxy_port != 0 {
+  // start lambda runtime api proxy if the sync mode is enabled
+  if sync_port != 0 {
     let refresh_tx = refresh_tx.clone();
     let last_refresh_setter = last_refresh_setter.clone();
     let last_refresh = last_refresh.clone();
     tokio::spawn(async move {
-      MockLambdaRuntimeApiServer::bind(proxy_port)
+      MockLambdaRuntimeApiServer::bind(sync_port)
         .await
         .serve(move |req| {
           let refresh_tx = refresh_tx.clone();
@@ -70,15 +70,15 @@ async fn main() -> Result<(), Error> {
             let res = LambdaRuntimeApiClient::forward(req).await;
             // now we get the response, we should refresh config before returning the response to the handler
 
-            if last_refresh.borrow().elapsed().as_millis() < proxy_cooldown_ms {
-              debug!("proxy cooldown not reached");
+            if last_refresh.borrow().elapsed().as_millis() < sync_cooldown_ms {
+              debug!("sync cooldown not reached");
             } else {
-              debug!("proxy cooldown reached");
+              debug!("sync cooldown reached");
               last_refresh_setter
                 .send(Instant::now())
                 .expect("send last_refresh failed");
 
-              refresh(&refresh_tx, proxy_delay_ms)
+              refresh(&refresh_tx, sync_delay_ms)
                 .await
                 .expect("refresh failed");
             }
@@ -103,7 +103,7 @@ async fn main() -> Result<(), Error> {
         }
         NextEvent::Invoke(_e) => {
           let last_refresh = last_refresh.borrow();
-          if proxy_port != 0 && last_refresh.elapsed().as_millis() >= proxy_cooldown_ms {
+          if sync_port != 0 && last_refresh.elapsed().as_millis() >= sync_cooldown_ms {
             // runtime proxy is enabled and it will refresh the config, skip here
             return Ok(());
           }
