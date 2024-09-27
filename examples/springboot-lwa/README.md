@@ -2,8 +2,6 @@
 
 In AWS Lambda only `/tmp` is writable, so you have to configure `JM.LOG.PATH` and `JM.SNAPSHOT.PATH` to point to `/tmp` directory. This can be done using an environment variable in the Lambda function configuration: `JAVA_TOOL_OPTIONS: -DJM.LOG.PATH=/tmp/nacos/logs -DJM.SNAPSHOT.PATH=/tmp/`, see [`template-proxy.yml`](./template-proxy.yml) or [`template-efs.yml`](./template-efs.yml).
 
-Make sure to use `nacos-config-spring-boot-starter` 0.2.8 or earlier version to ensure to use Nacos client v1.
-
 ## Build
 
 ### Proxy Mode
