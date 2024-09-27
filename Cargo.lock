@@ -102,6 +102,7 @@ name = "aws-lambda-nacos-adapter"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "aws-lambda-runtime-proxy",
  "axum",
  "futures",
  "lambda-extension",
@@ -116,6 +117,18 @@ dependencies = [
  "tokio-stream",
  "tonic",
  "urlencoding",
+]
+
+[[package]]
+name = "aws-lambda-runtime-proxy"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "547d7dea285f93fe8fb4f19dd20079f6e23bf7350b0802c932ca22ff407a689d"
+dependencies = [
+ "http-body-util",
+ "hyper 1.4.1",
+ "hyper-util",
+ "tokio",
 ]
 
 [[package]]
