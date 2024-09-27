@@ -37,7 +37,9 @@ Resources:
           NACOS_DATA_ID: !Ref NacosDataId
           NACOS_GROUP: !Ref NacosGroup
           AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH: /mnt/efs/nacos
-          RUST_LOG: trace
+          RUST_LOG: debug
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/proxy-entry.sh # only for proxy mode
+          AWS_LAMBDA_NACOS_ADAPTER_PROXY_PORT: 6666 # only for proxy mode
       Events:
         HelloWorld:
           Type: Api

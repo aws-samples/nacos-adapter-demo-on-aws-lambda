@@ -1,6 +1,6 @@
 ## Caveats
 
-In AWS Lambda only `/tmp` is writable, so you have to configure `JM.LOG.PATH` and `JM.SNAPSHOT.PATH` to point to `/tmp` directory. This can be done using an environment variable in the Lambda function configuration: `JAVA_TOOL_OPTIONS: -DJM.LOG.PATH=/tmp/nacos/logs -DJM.SNAPSHOT.PATH=/tmp/`, see [`template-proxy.yml`](./template-proxy.yml) or [`template-efs.yml`](./template-efs.yml).
+In AWS Lambda only `/tmp` is writable, so you have to configure `JM.LOG.PATH` and `JM.SNAPSHOT.PATH` to point to `/tmp` directory. This can be done using an environment variable in the Lambda function configuration: `JAVA_TOOL_OPTIONS: -DJM.LOG.PATH=/tmp/nacos/logs -DJM.SNAPSHOT.PATH=/tmp/`, see [`template-passthrough.yml`](./template-passthrough.yml) or [`template-efs.yml`](./template-efs.yml).
 
 ## Build
 
@@ -13,10 +13,15 @@ mkdir -p ./layer/extensions
 cargo build --release --target x86_64-unknown-linux-musl
 cp ../../target/x86_64-unknown-linux-musl/release/aws-lambda-nacos-adapter ./layer/extensions/
 
-sam build -u -t template-proxy.yml
+cp ../../scripts/proxy-entry-lwa.sh ./layer
+chmod +x ./layer/proxy-entry-lwa.sh
+
+sam build -u -t template-passthrough.yml
 ```
 
-### EFS Mode
+### FS Mode
+
+We use EFS to realize configuration updates.
 
 ```sh
 rm -rf ./layer/
@@ -40,6 +45,6 @@ sam deploy -g
 sam delete
 ```
 
-## Credit
+## Credits
 
 This example is based on the official [nacos-spring-boot-config-example](https://github.com/nacos-group/nacos-examples/tree/master/nacos-spring-boot-example/nacos-spring-boot-config-example).

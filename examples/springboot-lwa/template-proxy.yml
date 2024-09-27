@@ -35,9 +35,11 @@ Resources:
           PORT: "8000"
           RUST_LOG: info
           READINESS_CHECK_PATH: /healthz
-          AWS_LAMBDA_EXEC_WRAPPER: /opt/bootstrap
           JAVA_TOOL_OPTIONS: -DJM.LOG.PATH=/tmp/nacos/logs -DJM.SNAPSHOT.PATH=/tmp/
           AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS: !Ref NacosServerAddress
+          # AWS_LAMBDA_EXEC_WRAPPER: /opt/bootstrap # for non-proxy mode
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/proxy-entry-lwa.sh # only for proxy mode
+          AWS_LAMBDA_NACOS_ADAPTER_PROXY_PORT: 6666 # only for proxy mode
       Layers:
         - !Sub arn:aws:lambda:${AWS::Region}:753240598075:layer:LambdaAdapterLayerX86:22
         - !Ref NacosAdapterLayer
