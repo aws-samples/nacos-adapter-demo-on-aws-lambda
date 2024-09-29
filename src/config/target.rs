@@ -71,6 +71,8 @@ pub fn spawn_target_manager(
                     if config_tx.send((target.clone(), changed_tx.clone())).is_err() {
                       debug!("config_tx.send failed, which means no long connection is listening");
                     }
+                    // don't update the md5 in `targets` map in case the client doesn't refresh the config successfully.
+                    // if the client refreshes the config successfully, it will send a new md5 to the target manager
                   }
                 }
               }
