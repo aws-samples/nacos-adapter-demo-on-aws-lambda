@@ -38,6 +38,8 @@ Resources:
           NACOS_GROUP: !Ref NacosGroup
           AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH: /mnt/efs/nacos
           RUST_LOG: debug
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/sync-entry.sh
+          AWS_LAMBDA_NACOS_ADAPTER_SYNC_PORT: 6666
       Events:
         HelloWorld:
           Type: Api
