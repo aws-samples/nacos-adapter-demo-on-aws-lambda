@@ -6,12 +6,15 @@ Description: >
   Sample SAM Template for sam-app
 
 Parameters:
+  EFSAccessPointArn:
+    Type: String
+  EFSMountPath:
+    Type: String
+    Default: /mnt/efs
   SecurityGroups:
     Type: CommaDelimitedList
   SubnetIds:
     Type: CommaDelimitedList
-  NacosServerAddress:
-    Type: String
 
 Globals:
   Function:
@@ -36,8 +39,9 @@ Resources:
           RUST_LOG: info
           READINESS_CHECK_PATH: /healthz
           JAVA_TOOL_OPTIONS: -DJM.LOG.PATH=/tmp/nacos/logs -DJM.SNAPSHOT.PATH=/tmp/
-          AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS: !Ref NacosServerAddress
-          AWS_LAMBDA_EXEC_WRAPPER: /opt/bootstrap
+          AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH: /mnt/efs/nacos
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/sync-entry-lwa.sh
+          AWS_LAMBDA_NACOS_ADAPTER_SYNC_PORT: 6666
       Layers:
         - !Sub arn:aws:lambda:${AWS::Region}:753240598075:layer:LambdaAdapterLayerX86:22
         - !Ref NacosAdapterLayer
@@ -47,6 +51,9 @@ Resources:
           Properties:
             Path: /{proxy+}
             Method: ANY
+      FileSystemConfigs:
+        - Arn: !Ref EFSAccessPointArn
+          LocalMountPath: !Ref EFSMountPath
       VpcConfig:
         SecurityGroupIds: !Ref SecurityGroups
         SubnetIds: !Ref SubnetIds
