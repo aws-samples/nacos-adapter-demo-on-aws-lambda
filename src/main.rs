@@ -7,7 +7,7 @@ use aws_lambda_runtime_proxy::{LambdaRuntimeApiClient, MockLambdaRuntimeApiServe
 use config::{provider::ConfigProvider, target::spawn_target_manager};
 use lambda_extension::{
   service_fn,
-  tracing::{self, debug},
+  tracing::{self, debug, warn},
   Error, LambdaEvent, NextEvent,
 };
 use std::{
@@ -34,6 +34,10 @@ async fn main() -> Result<(), Error> {
   let sync_port = parse_env("AWS_LAMBDA_NACOS_ADAPTER_SYNC_PORT", 0);
   let sync_cooldown_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_SYNC_COOLDOWN_MS", 0);
   let sync_delay_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_SYNC_DELAY_MS", 100);
+
+  if sync_cooldown_ms < cooldown_ms {
+    warn!("AWS_LAMBDA_NACOS_ADAPTER_SYNC_COOLDOWN_MS should be no less than AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS");
+  }
 
   // start mock nacos, try passthrough mode first, otherwise use fs mode
   let refresh_tx = if let Ok(origin) = env::var("AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS") {
