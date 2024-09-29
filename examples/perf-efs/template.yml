@@ -21,7 +21,7 @@ Resources:
         const fs = require('fs')
         exports.handler = async function(event) {
           let start = Date.now();
-          const mtime = fs.statSync('/mnt/efs/nacos/DEFAULT_GROUP/test');
+          const mtime = fs.statSync('/mnt/efs/nacos/public/DEFAULT_GROUP/test');
           let end = Date.now()
           let elapse = end - start;
           console.log(JSON.stringify({
@@ -46,7 +46,7 @@ Resources:
           }))
 
           start = Date.now();
-          const config = fs.readFileSync('/mnt/efs/nacos/DEFAULT_GROUP/test', 'utf-8')
+          const config = fs.readFileSync('/mnt/efs/nacos/public/DEFAULT_GROUP/test', 'utf-8')
           end = Date.now()
           elapse = end - start;
           console.log(JSON.stringify({
