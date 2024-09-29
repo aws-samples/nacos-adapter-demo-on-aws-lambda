@@ -112,6 +112,7 @@ async fn main() -> Result<(), Error> {
             debug!("cooldown not reached");
           } else {
             debug!("cooldown reached");
+            drop(last_refresh); // prevent deadlock
             last_refresh_setter.send(Instant::now())?;
             refresh(&refresh_tx, delay_ms).await?;
           }
