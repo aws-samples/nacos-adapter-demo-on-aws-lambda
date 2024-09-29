@@ -31,7 +31,7 @@ When your AWS Lambda functions are invoked, the adapter will read the latest con
 
 ### Enable Synchronous Update
 
-By default, the adapter will update the configuration asynchronously, no matter the mode is passthrough or fs. This means the configuration update might be applied in the next invocation instead of the current one.
+By default, the adapter will update the configuration asynchronously, no matter the mode is passthrough or fs. The good thing about asynchronous update is that it won't introduce additional latency to your function's invocation. The downside is that the configuration update might be applied in the next invocation instead of the current one.
 
 This should be fine if your function is invoked frequently. But if your function is invoked infrequently, you may want to update the configuration synchronously if the last update is too long ago, which means the configuration is updated first, then your handler function is invoked.
 
