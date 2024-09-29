@@ -21,7 +21,7 @@ sam build -u -t template-passthrough.yml
 
 ### FS Mode
 
-We use EFS to realize configuration updates.
+We use Amazon EFS to realize configuration updates.
 
 ```sh
 rm -rf ./layer/
