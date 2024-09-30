@@ -29,11 +29,14 @@ Resources:
       MemorySize: 1024
       Handler: run.sh
       CodeUri: app/
-      Runtime: java8.al2
+      Runtime: java11
+      AutoPublishAlias: live
+      SnapStart:
+        ApplyOn: PublishedVersions
       Environment:
         Variables:
           PORT: "8000"
-          RUST_LOG: info
+          RUST_LOG: debug
           READINESS_CHECK_PATH: /healthz
           JAVA_TOOL_OPTIONS: -DJM.LOG.PATH=/tmp/nacos/logs -DJM.SNAPSHOT.PATH=/tmp/
           AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS: !Ref NacosServerAddress
