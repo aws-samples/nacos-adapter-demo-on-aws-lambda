@@ -33,6 +33,9 @@ Resources:
       Runtime: java17
       MemorySize: 1024
       Timeout: 30
+      # AutoPublishAlias: live
+      # SnapStart:
+      #   ApplyOn: PublishedVersions
       Environment:
         Variables:
           JAVA_TOOL_OPTIONS: -DJM.LOG.PATH=/tmp/nacos/logs -DJM.SNAPSHOT.PATH=/tmp/

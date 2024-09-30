@@ -15,6 +15,12 @@ Parameters:
     Type: CommaDelimitedList
   SubnetIds:
     Type: CommaDelimitedList
+  NacosDataId:
+    Type: String
+    Default: test
+  NacosGroup:
+    Type: String
+    Default: DEFAULT_GROUP
 
 Resources:
   NacosAdapterLayer:
@@ -30,13 +36,16 @@ Resources:
       Runtime: java17
       MemorySize: 1024
       Timeout: 30
+      # AutoPublishAlias: live
+      # SnapStart:
+      #   ApplyOn: PublishedVersions
       Environment:
         Variables:
           JAVA_TOOL_OPTIONS: -DJM.LOG.PATH=/tmp/nacos/logs -DJM.SNAPSHOT.PATH=/tmp/
           NACOS_SERVER_ADDRESS: localhost:8848
           NACOS_DATA_ID: !Ref NacosDataId
           NACOS_GROUP: !Ref NacosGroup
-          AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH: /mnt/efs/nacos
+          AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH: /mnt/efs/nacos/
           RUST_LOG: debug
       Events:
         HelloWorld:
