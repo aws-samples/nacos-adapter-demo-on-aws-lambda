@@ -13,7 +13,7 @@ use super::{
 };
 use crate::config::{provider::ConfigProvider, target::Target};
 use lambda_extension::{
-  tracing::{debug, warn},
+  tracing::{debug, error, warn},
   Error,
 };
 use lazy_static::lazy_static;
@@ -132,6 +132,7 @@ impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
             response.result_code = ERROR_CODE;
             response.error_code = ERROR_CODE;
             response.message = Some(err.to_string());
+            error!(error = %err, "ConfigQueryRequest");
             Ok(HandlerResult::success(PayloadUtils::build_payload(
               "ErrorResponse",
               serde_json::to_string(&response)?,
