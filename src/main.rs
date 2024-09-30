@@ -15,12 +15,11 @@ use std::{
   fmt::Display,
   net::{Ipv4Addr, SocketAddrV4},
   str::FromStr,
-  time::Duration,
 };
 use tokio::{
   net::TcpListener,
   sync::{mpsc, watch},
-  time::{sleep, Instant},
+  time::Instant,
 };
 
 #[tokio::main]
@@ -29,11 +28,9 @@ async fn main() -> Result<(), Error> {
 
   let port = parse_env("AWS_LAMBDA_NACOS_ADAPTER_PORT", 8848);
   let cache_size = parse_env("AWS_LAMBDA_NACOS_ADAPTER_CACHE_SIZE", 64);
-  let delay_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_DELAY_MS", 100);
   let cooldown_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS", 0);
   let sync_port = parse_env("AWS_LAMBDA_NACOS_ADAPTER_SYNC_PORT", 0);
   let sync_cooldown_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_SYNC_COOLDOWN_MS", 0);
-  let sync_delay_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_SYNC_DELAY_MS", 100);
 
   if sync_cooldown_ms < cooldown_ms {
     warn!("AWS_LAMBDA_NACOS_ADAPTER_SYNC_COOLDOWN_MS should be no less than AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS");
@@ -82,9 +79,7 @@ async fn main() -> Result<(), Error> {
                 .send(Instant::now())
                 .expect("send last_refresh failed");
 
-              refresh(&refresh_tx, sync_delay_ms)
-                .await
-                .expect("refresh failed");
+              refresh(&refresh_tx).await.expect("refresh failed");
             }
 
             res
@@ -118,7 +113,7 @@ async fn main() -> Result<(), Error> {
             debug!("cooldown reached");
             drop(last_refresh); // prevent deadlock
             last_refresh_setter.send(Instant::now())?;
-            refresh(&refresh_tx, delay_ms).await?;
+            refresh(&refresh_tx).await?;
           }
         }
       }
@@ -159,21 +154,16 @@ fn parse_env<T: FromStr + Display + Copy>(name: &str, default: T) -> T {
   v
 }
 
-async fn refresh(refresh_tx: &mpsc::Sender<mpsc::Sender<()>>, delay_ms: u64) -> Result<(), Error> {
+async fn refresh(refresh_tx: &mpsc::Sender<mpsc::Sender<()>>) -> Result<(), Error> {
   let (changed_tx, mut changed_rx) = mpsc::channel::<()>(1);
   refresh_tx.send(changed_tx).await?;
   let mut changed = false;
+  let now = Instant::now();
   while let Some(()) = changed_rx.recv().await {
     changed = true;
   }
   // now changed_rx.recv() returns None, meaning all changed_tx are dropped and the refresh is done
-  debug!(changed, "refresh done");
-
-  // only delay if config changed
-  if changed && delay_ms > 0 {
-    debug!("sleeping for {}ms", delay_ms);
-    sleep(Duration::from_millis(delay_ms)).await;
-  }
+  debug!(changed, "refresh done: {}ms", now.elapsed().as_millis());
 
   Ok(())
 }

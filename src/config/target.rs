@@ -1,7 +1,10 @@
 use super::provider::ConfigProvider;
 use futures::future::join_all;
 use lambda_extension::tracing::{debug, trace};
-use std::{collections::HashMap, sync::Arc};
+use std::{
+  collections::{hash_map::Entry, HashMap},
+  sync::Arc,
+};
 use tokio::sync::{broadcast, mpsc};
 
 /// This is cheap to clone. This is `Send` and `Sync`.
@@ -28,14 +31,16 @@ impl Target {
   }
 }
 
-#[allow(clippy::type_complexity, reason = "one time use")]
+struct TargetState {
+  client_md5: String,
+  latest_md5: String,
+  changed_tx: Option<mpsc::Sender<()>>,
+}
+
 pub fn spawn_target_manager(
   cp: impl ConfigProvider + 'static,
   mut refresh_rx: mpsc::Receiver<mpsc::Sender<()>>,
-) -> (
-  mpsc::Sender<(Target, String)>,
-  broadcast::Sender<(Target, mpsc::Sender<()>)>,
-) {
+) -> (mpsc::Sender<(Target, String)>, broadcast::Sender<Target>) {
   // this channel is used to register listening targets to the target manager
   let (target_tx, mut target_rx) = mpsc::channel::<(Target, String)>(1);
   // this channel is used to send updated target from the target manager to the long connection
@@ -51,28 +56,47 @@ pub fn spawn_target_manager(
           target = target_rx.recv() => {
             debug!("register target: {:?}", target); // target might be None
             let Some((target, md5)) = target else { break };
-            targets.insert(target, md5);
+            match targets.entry(target) {
+              Entry::Vacant(entry) => {
+                entry.insert(TargetState {
+                  client_md5: md5.clone(),
+                  latest_md5: md5,
+                  changed_tx: None,
+                });
+              },
+              Entry::Occupied(mut entry) => {
+                let state = entry.get_mut();
+                if md5 == state.latest_md5 {
+                  // client md5 matches the latest md5,
+                  // take and drop the sender to mark the refresh as done
+                  state.changed_tx.take();
+                }
+                state.client_md5 = md5;
+              },
+            }
           }
           changed_tx = refresh_rx.recv() => {
             debug!("refreshing all targets: {:?}", changed_tx.is_some());
             let Some(changed_tx) = changed_tx else { break };
 
-            join_all(targets.iter().map(|(target, md5)| {
+            join_all(targets.iter_mut().map(|(target, state)| {
               let mut cp = cp.clone();
               let config_tx = config_tx.clone();
               let changed_tx = changed_tx.clone();
               async move {
                 if let Ok(config) = cp.get(&target.data_id, &target.group, target.tenant(), true).await {
                   let new_md5 = config.md5();
-                  if new_md5 != md5 {
-                    debug!(md5, new_md5, "md5 mismatch");
+                  let client_md5 = &state.client_md5;
+                  if new_md5 != client_md5 {
+                    debug!(client_md5, new_md5, "md5 mismatch");
+                    state.latest_md5 = new_md5.to_owned();
+                    changed_tx.send(()).await.expect("changed_tx.send failed");
+                    state.changed_tx = Some(changed_tx.clone());
                     // it's ok if the config_tx.send failed
                     // it means the long connection is disconnected but might be reconnected later
-                    if config_tx.send((target.clone(), changed_tx.clone())).is_err() {
+                    if config_tx.send(target.clone()).is_err() {
                       debug!("config_tx.send failed, which means no long connection is listening");
                     }
-                    // don't update the md5 in `targets` map in case the client doesn't refresh the config successfully.
-                    // if the client refreshes the config successfully, it will send a new md5 to the target manager
                   }
                 }
               }

@@ -35,7 +35,7 @@ By default, the adapter will update the configuration asynchronously, no matter 
 
 This should be fine if your function is invoked frequently. But if your function is invoked infrequently, you may want to update the configuration synchronously if the last update is too long ago, which means the configuration is updated first, then your handler function is invoked.
 
-This might introduce additional latency to your function's invocation, you can control the delay and cooldown time via the `AWS_LAMBDA_NACOS_ADAPTER_SYNC_DELAY_MS` and `AWS_LAMBDA_NACOS_ADAPTER_SYNC_COOLDOWN_MS` environment variables.
+This might introduce additional latency to your function's invocation, you can control the cooldown time via the `AWS_LAMBDA_NACOS_ADAPTER_SYNC_COOLDOWN_MS` environment variables to prevent synchronous update from happening too frequently.
 
 This feature requires runtime api proxy to realize, so you have to modify your handler function's environment variable `AWS_LAMBDA_RUNTIME_API` to override the default value. This environment variable is preserved by AWS Lambda, so you have to use [wrapper scripts](https://docs.aws.amazon.com/lambda/latest/dg/runtimes-modify.html) to override it. You can checkout the [`scripts/`](./scripts/) folder for the basic wrapper scripts.
 
@@ -59,11 +59,6 @@ This feature requires runtime api proxy to realize, so you have to modify your h
   - The cooldown in milliseconds before the adapter refresh the configuration again.
   - If you want your configuration to be applied as soon as possible, reduce this value. If you want to reduce the number of requests to the origin server, increase this value.
   - Default: `0`.
-- `AWS_LAMBDA_NACOS_ADAPTER_DELAY_MS`
-  - The delay in milliseconds after the configuration refresh, before the adapter mark this invocation as done.
-  - This is useful to make sure the configuration is applied to your handler function before the next invocation. If this is too small and your handler function returns too quickly, your handler function may not get the updated configuration.
-  - This won't affect your function's response time, but if the config is changed, it may increase your function's duration.
-  - Default: `100`.
 
 ### Synchronous Update
 
@@ -77,11 +72,6 @@ This feature requires runtime api proxy to realize, so you have to modify your h
   - The cooldown in milliseconds before the adapter refresh the configuration again for synchronous update.
   - This should be no less than `AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS`.
   - Default: `0`.
-- `AWS_LAMBDA_NACOS_ADAPTER_SYNC_DELAY_MS`
-  - The delay in milliseconds after the adapter refresh the configuration, before invoking your handler function, for synchronous update.
-  - This is to reserve some time for the configuration to be applied to your handler function.
-  - This will increase your function's response time if the config is changed.
-  - Default: `100`.
 
 ### Misc
 
@@ -104,10 +94,9 @@ By enabling synchronous update and set the cooldown to 0ms, the adapter will alw
 
 ```yaml
 AWS_LAMBDA_NACOS_ADAPTER_SYNC_COOLDOWN_MS: 0
-AWS_LAMBDA_NACOS_ADAPTER_SYNC_DELAY_MS: 100 # adjustable
 ```
 
-Performance: if the config is not changed, the adapter will introduce an additional delay to your function's **_each_** invocation when fetching the latest config; if the config is changed, besides the delay caused by fetching the config, the adapter will introduce an additional delay of `AWS_LAMBDA_NACOS_ADAPTER_SYNC_DELAY_MS` to your function's invocation.
+Performance: if the config is not changed, the adapter will introduce an additional delay to your function's **_each_** invocation when fetching the latest config; if the config is changed, besides the delay caused by fetching the config, the adapter will introduce an additional delay to wait for your configuration to be applied.
 
 ### Balanced
 
@@ -116,9 +105,7 @@ It's recommended to enable synchronous update, and set the cooldown to a reasona
 ```yaml
 # all these values are adjustable
 AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS: 5000 # 5 seconds
-AWS_LAMBDA_NACOS_ADAPTER_DELAY_MS: 100
 AWS_LAMBDA_NACOS_ADAPTER_SYNC_COOLDOWN_MS: 60000 # 1 minute
-AWS_LAMBDA_NACOS_ADAPTER_SYNC_DELAY_MS: 100
 ```
 
 In the examples above, since the cooldown for synchronous update is much longer than the cooldown for asynchronous update, the adapter will update the configuration asynchronously for most invocations (if the function is frequently invoked), and update the configuration synchronously if the last update is too long ago.
@@ -146,13 +133,13 @@ sequenceDiagram
       L->>A: Next invocation (via runtime API proxy)
       A-->>S: Get latest config <br/> (if AWS_LAMBDA_NACOS_ADAPTER_SYNC_COOLDOWN_MS is reached)
       A-->>C: Notify the config change (if the config is changed)
-      A-->>A: Wait for AWS_LAMBDA_NACOS_ADAPTER_SYNC_DELAY_MS <br/> to apply the latest config (if the config is changed)
+      A-->>A: Wait for the configuration to be applied <br/> (if the config is changed)
       A->>C: Invoke the handler function
     and Asynchronous update
       L->>A: Next invocation (via AWS Lambda's Extension API)
       A-->>S: Get latest config <br/> (if AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS is reached <br/> and not updated by synchronous update)
       A-->>C: Notify the config change (if the config is changed)
-      A-->>A: Wait for AWS_LAMBDA_NACOS_ADAPTER_DELAY_MS <br/> to apply the latest config (if the config is changed)
+      A-->>A: Wait for the configuration to be applied <br/> (if the config is changed)
       A->>L: End of this invocation (via AWS Lambda's Extension API)
     end
   end

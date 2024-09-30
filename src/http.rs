@@ -33,7 +33,7 @@ struct ListeningConfig {
 pub fn spawn(
   listener: TcpListener,
   target_tx: mpsc::Sender<(Target, String)>,
-  config_tx: broadcast::Sender<(Target, mpsc::Sender<()>)>,
+  config_tx: broadcast::Sender<Target>,
   cp: impl ConfigProvider + 'static,
 ) {
   tokio::spawn(start(listener, target_tx, config_tx, cp));
@@ -42,7 +42,7 @@ pub fn spawn(
 async fn start(
   listener: TcpListener,
   target_tx: mpsc::Sender<(Target, String)>,
-  config_tx: broadcast::Sender<(Target, mpsc::Sender<()>)>,
+  config_tx: broadcast::Sender<Target>,
   cp: impl ConfigProvider + 'static,
 ) {
   macro_rules! handle_get_config {
@@ -200,11 +200,9 @@ async fn start(
                 res = config_rx.recv() => {
                   // got config update from the target manager
                   // TODO: check if the updated config is one of we are listening
-                  if let Ok((target, changed_tx)) = res {
+                  if let Ok(target) = res {
                     let res = encode(&target.to_param_string()).to_string();
                     debug!(res, "update");
-                    // notify the lambda extension to sleep
-                    changed_tx.send(()).await.expect("changed_rx should not be dropped");
                     return (StatusCode::OK, res);
                   }
                 }

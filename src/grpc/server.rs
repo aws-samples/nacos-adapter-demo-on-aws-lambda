@@ -24,7 +24,7 @@ use tonic::transport::Server;
 pub fn spawn(
   addr: SocketAddr,
   target_tx: mpsc::Sender<(Target, String)>,
-  config_tx: broadcast::Sender<(Target, mpsc::Sender<()>)>,
+  config_tx: broadcast::Sender<Target>,
   cp: impl ConfigProvider + 'static,
 ) {
   tokio::spawn(async move {
@@ -218,7 +218,7 @@ impl<CP: ConfigProvider + 'static> Request for RequestServerImpl<CP> {
 }
 
 pub struct BiRequestStreamServerImpl {
-  config_tx: broadcast::Sender<(Target, mpsc::Sender<()>)>,
+  config_tx: broadcast::Sender<Target>,
 }
 
 #[tonic::async_trait]
@@ -248,7 +248,7 @@ impl BiRequestStream for BiRequestStreamServerImpl {
         }
       };
 
-      while let Ok((target, changed_tx)) = config_rx.recv().await {
+      while let Ok(target) = config_rx.recv().await {
         debug!("notifying config change: {:?}", target);
         // TODO: check if the updated config is one of we are listening
         let request = ConfigChangeNotifyRequest {
@@ -265,8 +265,6 @@ impl BiRequestStream for BiRequestStreamServerImpl {
           serde_json::to_string(&request).unwrap(),
         );
         payload_tx.send(Ok(payload)).await.unwrap();
-        // notify the lambda extension to sleep
-        changed_tx.send(()).await.unwrap();
       }
     });
 
