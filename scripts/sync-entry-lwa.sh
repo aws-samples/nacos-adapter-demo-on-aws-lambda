@@ -1,3 +1,0 @@
-#!/bin/bash
-
-env AWS_LAMBDA_RUNTIME_API=127.0.0.1:$AWS_LAMBDA_NACOS_ADAPTER_SYNC_PORT /opt/bootstrap
