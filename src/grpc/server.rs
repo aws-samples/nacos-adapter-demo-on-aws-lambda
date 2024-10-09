@@ -150,7 +150,7 @@ impl<CP: ConfigProvider + Clone + Send + 'static> RequestServerImpl<CP> {
         };
 
         for item in request.config_listen_contexts {
-          debug!(data_id = %item.data_id, group = %item.group, tenant = %item.tenant, "ConfigBatchListenRequest");
+          debug!(data_id = %item.data_id, group = %item.group, tenant = %item.tenant, md5 = %item.md5, "ConfigBatchListenRequest");
           let target = Target {
             data_id: item.data_id.clone().into(),
             group: item.group.clone().into(),
