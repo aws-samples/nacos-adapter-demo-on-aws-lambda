@@ -31,8 +31,12 @@ mkdir -p ./layer/extensions
 cargo build --release --target x86_64-unknown-linux-musl
 cp ../../target/x86_64-unknown-linux-musl/release/aws-lambda-nacos-adapter ./layer/extensions/
 
-cp ../../scripts/sync-entry-lwa.sh ./layer
-chmod +x ./layer/sync-entry-lwa.sh
+[ ! -f lwa.zip ] && aws lambda get-layer-version-by-arn --arn arn:aws:lambda:us-east-1:753240598075:layer:LambdaAdapterLayerX86:22 --output json | jq -r '.Content.Location' | xargs curl -o lwa.zip
+
+unzip lwa.zip -d layer
+mv ./layer/extensions/lambda-adapter ./layer
+cp ../../scripts/lambda-adapter ./layer/extensions
+chmod +x ./layer/extensions/lambda-adapter
 
 sam build -u -t template-passthrough-sync.yml
 ```
@@ -62,8 +66,12 @@ mkdir -p ./layer/extensions
 cargo build --release --target x86_64-unknown-linux-musl
 cp ../../target/x86_64-unknown-linux-musl/release/aws-lambda-nacos-adapter ./layer/extensions/
 
-cp ../../scripts/sync-entry-lwa.sh ./layer
-chmod +x ./layer/sync-entry-lwa.sh
+[ ! -f lwa.zip ] && aws lambda get-layer-version-by-arn --arn arn:aws:lambda:us-east-1:753240598075:layer:LambdaAdapterLayerX86:22 --output json | jq -r '.Content.Location' | xargs curl -o lwa.zip
+
+unzip lwa.zip -d layer
+mv ./layer/extensions/lambda-adapter ./layer
+cp ../../scripts/lambda-adapter ./layer/extensions
+chmod +x ./layer/extensions/lambda-adapter
 
 sam build -u -t template-efs-sync.yml
 ```

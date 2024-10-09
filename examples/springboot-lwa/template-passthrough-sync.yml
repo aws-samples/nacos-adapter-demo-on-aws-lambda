@@ -36,14 +36,13 @@ Resources:
       Environment:
         Variables:
           PORT: "8000"
-          RUST_LOG: debug
+          RUST_LOG: info,lambda_web_adapter=debug,aws_lambda_nacos_adapter=debug
           READINESS_CHECK_PATH: /healthz
           JAVA_TOOL_OPTIONS: -DJM.LOG.PATH=/tmp/nacos/logs -DJM.SNAPSHOT.PATH=/tmp/
           AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS: !Ref NacosServerAddress
-          AWS_LAMBDA_EXEC_WRAPPER: /opt/sync-entry-lwa.sh
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/bootstrap
           AWS_LAMBDA_NACOS_ADAPTER_SYNC_PORT: 6666
       Layers:
-        - !Sub arn:aws:lambda:${AWS::Region}:753240598075:layer:LambdaAdapterLayerX86:22
         - !Ref NacosAdapterLayer
       Events:
         Root:
