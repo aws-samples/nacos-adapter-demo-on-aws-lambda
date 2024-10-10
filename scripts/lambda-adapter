@@ -2,7 +2,7 @@
 
 # Wait for the mock AWS Lambda runtime API to be ready
 while true; do
-  if printf "" | dd of=/dev/null 2>/dev/tcp/127.0.0.1/$AWS_LAMBDA_NACOS_ADAPTER_SYNC_PORT; then
+  if (printf "" | dd of=/dev/null 2>/dev/tcp/127.0.0.1/$AWS_LAMBDA_NACOS_ADAPTER_SYNC_PORT) >/dev/null 2>&1; then
     break
   fi
   sleep 0.001
