@@ -7,7 +7,7 @@ use aws_lambda_runtime_proxy::{LambdaRuntimeApiClient, MockLambdaRuntimeApiServe
 use config::{provider::ConfigProvider, target::spawn_target_manager};
 use lambda_extension::{
   service_fn,
-  tracing::{self, debug, warn},
+  tracing::{debug, subscriber::EnvFilter, warn},
   Error, LambdaEvent, NextEvent,
 };
 use std::{
@@ -21,10 +21,18 @@ use tokio::{
   sync::{mpsc, watch},
   time::Instant,
 };
+use tracing_subscriber::filter::LevelFilter;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-  tracing::init_default_subscriber();
+  tracing_subscriber::fmt()
+    .with_env_filter(
+      EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .from_env_lossy(),
+    )
+    .without_time()
+    .init();
 
   let port = parse_env("AWS_LAMBDA_NACOS_ADAPTER_PORT", 8848);
   let cache_size = parse_env("AWS_LAMBDA_NACOS_ADAPTER_CACHE_SIZE", 64);
