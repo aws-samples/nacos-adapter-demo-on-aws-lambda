@@ -57,18 +57,20 @@ async fn main() -> Result<(), Error> {
     tokio::spawn(async move {
       MockLambdaRuntimeApiServer::bind(sync_port)
         .await
+        .expect("failed to start lambda runtime api proxy")
         .serve(move |req| {
           let refresh_tx = refresh_tx.clone();
           let last_refresh_setter = last_refresh_setter.clone();
           let last_refresh = last_refresh.clone();
           async move {
+            let mut client = LambdaRuntimeApiClient::new().await?;
             if req.uri().path() != "/2018-06-01/runtime/invocation/next" {
               // not invocation/next, just forward
-              return LambdaRuntimeApiClient::forward(req).await;
+              return client.forward(req).await;
             }
 
             // else, the request is invocation/next, forward the request first
-            let res = LambdaRuntimeApiClient::forward(req).await;
+            let res = client.forward(req).await?;
             // now we get the response, we should refresh config before returning the response to the handler
 
             if last_refresh.borrow().elapsed().as_millis() < sync_cooldown_ms {
@@ -82,7 +84,7 @@ async fn main() -> Result<(), Error> {
               refresh(&refresh_tx).await.expect("refresh failed");
             }
 
-            res
+            Ok(res)
           }
         })
         .await
