@@ -36,7 +36,7 @@ Resources:
       Environment:
         Variables:
           PORT: "8000"
-          RUST_LOG: info,lambda_web_adapter=debug,aws_lambda_nacos_adapter=debug
+          RUST_LOG: info,lambda_web_adapter=debug,aws_lambda_nacos_adapter=debug,aws_lambda_runtime_proxy=off
           READINESS_CHECK_PATH: /healthz
           JAVA_TOOL_OPTIONS: -DJM.LOG.PATH=/tmp/nacos/logs -DJM.SNAPSHOT.PATH=/tmp/
           AWS_LAMBDA_NACOS_ADAPTER_ORIGIN_ADDRESS: !Ref NacosServerAddress
