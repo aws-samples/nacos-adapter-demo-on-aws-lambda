@@ -45,6 +45,7 @@ Resources:
           AWS_LAMBDA_NACOS_ADAPTER_CONFIG_PATH: /mnt/efs/nacos/
           AWS_LAMBDA_EXEC_WRAPPER: /opt/bootstrap
           AWS_LAMBDA_NACOS_ADAPTER_SYNC_PORT: 6666
+          AWS_LAMBDA_NACOS_ADAPTER_SYNC_WAIT_MS: 10
       Layers:
         - !Ref NacosAdapterLayer
       Events:
