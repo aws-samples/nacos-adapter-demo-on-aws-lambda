@@ -93,8 +93,10 @@ async fn main() -> Result<(), Error> {
                 .send(Instant::now())
                 .expect("send last_refresh failed");
 
-              if refresh(&refresh_tx).await? && sync_wait_ms > 0 {
-                // if config changed, we should wait for a while before returning the response to the handler
+              let changed = refresh(&refresh_tx).await?;
+
+              // if config changed, we should wait for a while before returning the response to the handler
+              if changed && sync_wait_ms > 0 {
                 debug!("config changed, wait for {}ms", sync_wait_ms);
                 sleep(Duration::from_millis(sync_wait_ms)).await;
                 debug!("wait done");
@@ -117,12 +119,15 @@ async fn main() -> Result<(), Error> {
     async move {
       match event.next {
         NextEvent::Shutdown(_e) => {
-          // TODO: print nacos logs? user should provide a file path like /tmp/nacos/logs/nacos/config.log
+          // TODO: print nacos client logs?
+          // user should provide a file path like /tmp/nacos/logs/nacos/config.log
+          // based on `-DJM.LOG.PATH`
         }
         NextEvent::Invoke(_e) => {
           let last_refresh = last_refresh.borrow();
+
           if sync_port != 0 && last_refresh.elapsed().as_millis() >= sync_cooldown_ms {
-            // runtime proxy is enabled and it will refresh the config, skip here
+            // runtime proxy is enabled and it will refresh the config in sync mode, skip here
             return Ok(());
           }
 
@@ -132,8 +137,11 @@ async fn main() -> Result<(), Error> {
             debug!("cooldown reached");
             drop(last_refresh); // prevent deadlock
             last_refresh_setter.send(Instant::now())?;
-            if refresh(&refresh_tx).await? && wait_ms > 0 {
-              // if config changed, we should wait for a while before finishing this invocation
+
+            let changed = refresh(&refresh_tx).await?;
+
+            // if config changed, we should wait for a while before finishing this invocation
+            if changed && wait_ms > 0 {
               debug!("config changed, wait for {}ms", wait_ms);
               sleep(Duration::from_millis(wait_ms)).await;
               debug!("wait done");
@@ -182,6 +190,7 @@ fn parse_env<T: FromStr + Display + Copy>(name: &str, default: T) -> T {
 async fn refresh(refresh_tx: &mpsc::Sender<mpsc::Sender<()>>) -> Result<bool> {
   let (changed_tx, mut changed_rx) = mpsc::channel::<()>(1);
   refresh_tx.send(changed_tx).await?;
+
   let mut changed = false;
   let now = Instant::now();
   while let Some(()) = changed_rx.recv().await {

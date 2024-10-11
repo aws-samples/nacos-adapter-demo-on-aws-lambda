@@ -1,6 +1,6 @@
 use super::provider::ConfigProvider;
 use futures::future::join_all;
-use lambda_extension::tracing::{debug, trace};
+use lambda_extension::tracing::debug;
 use std::{
   collections::{hash_map::Entry, HashMap},
   sync::Arc,
@@ -104,7 +104,7 @@ pub fn spawn_target_manager(
           }
         }
       }
-      trace!("target manager is stopped");
+      debug!("target manager is stopped");
     }
   });
 
