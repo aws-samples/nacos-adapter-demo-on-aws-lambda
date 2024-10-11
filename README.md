@@ -6,9 +6,9 @@ Let your AWS Lambda functions listen to your configuration changes on Nacos. Sup
 
 This can be used as an AWS Lambda Layer.
 
-1. Run `sam build` to build the layer, then run `sam deploy` to deploy the layer.
+1. Run `sam build` to build the layer, then run `sam deploy -g` to deploy the layer.
 2. Add the layer to your lambda function.
-3. Set your function's [environment variables](#environment-variables) below to configure the adapter.
+3. Set your function's [environment variables](#environment-variables) (see below) to configure the adapter.
 4. Specify the Nacos server to `127.0.0.1:8848` (or the port you set) for your app.
 
 ## Getting Started
@@ -28,6 +28,8 @@ In this mode, you can provide a path as the configuration source via the `AWS_LA
 If your configuration won't change, you can provide a static configuration file to the adapter. If your configuration will change, you can use a shared file system like Amazon EFS to share the configuration between your functions.
 
 When your AWS Lambda functions are invoked, the adapter will read the latest configuration from the file system and notify your functions if the config changes.
+
+This mode is useful if you don't want your AWS Lambda functions to access your Nacos server too frequently in passthrough mode.
 
 ### Enable Synchronous Update
 
@@ -66,14 +68,16 @@ This feature requires runtime api proxy to realize, so you have to modify your h
 ### Synchronous Update
 
 - `AWS_LAMBDA_EXEC_WRAPPER`
-  - Set this to `/opt/sync-entry.sh` (or `/opt/sync-entry-lwa.sh` if you are using [AWS Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter)) to enable synchronous update.
   - See the [AWS official documentation](https://docs.aws.amazon.com/lambda/latest/dg/runtimes-modify.html) about this environment variable.
+  - See the [examples](./examples/) for how to use this environment variable.
+  - This must be set to enable synchronous update.
 - `AWS_LAMBDA_NACOS_ADAPTER_SYNC_PORT`
   - The port number that the runtime API proxy listens on for synchronous update.
   - You can set this to any port number that is not used by other processes.
+  - This must be set to enable synchronous update.
 - `AWS_LAMBDA_NACOS_ADAPTER_SYNC_COOLDOWN_MS`
   - The cooldown in milliseconds before the adapter refresh the configuration again for synchronous update.
-  - This should be no less than `AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS`.
+  - This should be no less than `AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS` (the asynchronous cooldown).
   - Default: `0`.
 - `AWS_LAMBDA_NACOS_ADAPTER_SYNC_WAIT_MS`
   - The time in milliseconds that the adapter waits for the handler function to apply the updated configuration, before invoking the handler function.
@@ -100,6 +104,7 @@ By enabling synchronous update and set the cooldown to 0ms, the adapter will alw
 
 ```yaml
 AWS_LAMBDA_NACOS_ADAPTER_SYNC_COOLDOWN_MS: 0
+AWS_LAMBDA_NACOS_ADAPTER_SYNC_WAIT_MS: 10 # adjust this value according to your application
 ```
 
 Performance: if the config is not changed, the adapter will introduce an additional delay to your function's **_each_** invocation when fetching the latest config; if the config is changed, besides the delay caused by fetching the config, the adapter will introduce an additional delay to wait for your configuration to be applied.
@@ -111,7 +116,9 @@ It's recommended to enable synchronous update, and set the cooldown to a reasona
 ```yaml
 # all these values are adjustable
 AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS: 5000 # 5 seconds
+AWS_LAMBDA_NACOS_ADAPTER_WAIT_MS: 10
 AWS_LAMBDA_NACOS_ADAPTER_SYNC_COOLDOWN_MS: 60000 # 1 minute
+AWS_LAMBDA_NACOS_ADAPTER_SYNC_WAIT_MS: 10
 ```
 
 In the examples above, since the cooldown for synchronous update is much longer than the cooldown for asynchronous update, the adapter will update the configuration asynchronously for most invocations (if the function is frequently invoked), and update the configuration synchronously if the last update is too long ago.
