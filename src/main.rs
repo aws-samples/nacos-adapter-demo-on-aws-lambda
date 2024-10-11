@@ -3,6 +3,7 @@ mod grpc;
 mod http;
 
 use crate::config::{fs::FsConfigProvider, passthrough::PassthroughConfigProvider};
+use anyhow::Result;
 use aws_lambda_runtime_proxy::{LambdaRuntimeApiClient, MockLambdaRuntimeApiServer};
 use config::{provider::ConfigProvider, target::spawn_target_manager};
 use lambda_extension::{
@@ -15,11 +16,12 @@ use std::{
   fmt::Display,
   net::{Ipv4Addr, SocketAddrV4},
   str::FromStr,
+  time::Duration,
 };
 use tokio::{
   net::TcpListener,
   sync::{mpsc, watch},
-  time::Instant,
+  time::{sleep, Instant},
 };
 use tracing_subscriber::filter::LevelFilter;
 
@@ -37,8 +39,10 @@ async fn main() -> Result<(), Error> {
   let port = parse_env("AWS_LAMBDA_NACOS_ADAPTER_PORT", 8848);
   let cache_size = parse_env("AWS_LAMBDA_NACOS_ADAPTER_CACHE_SIZE", 64);
   let cooldown_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS", 0);
+  let wait_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_WAIT_MS", 0);
   let sync_port = parse_env("AWS_LAMBDA_NACOS_ADAPTER_SYNC_PORT", 0);
   let sync_cooldown_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_SYNC_COOLDOWN_MS", 0);
+  let sync_wait_ms = parse_env("AWS_LAMBDA_NACOS_ADAPTER_SYNC_WAIT_MS", 0);
 
   if sync_cooldown_ms < cooldown_ms {
     warn!("AWS_LAMBDA_NACOS_ADAPTER_SYNC_COOLDOWN_MS should be no less than AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS");
@@ -89,7 +93,12 @@ async fn main() -> Result<(), Error> {
                 .send(Instant::now())
                 .expect("send last_refresh failed");
 
-              refresh(&refresh_tx).await.expect("refresh failed");
+              if refresh(&refresh_tx).await? && sync_wait_ms > 0 {
+                // if config changed, we should wait for a while before returning the response to the handler
+                debug!("config changed, wait for {}ms", sync_wait_ms);
+                sleep(Duration::from_millis(sync_wait_ms)).await;
+                debug!("wait done");
+              }
             }
 
             Ok(res)
@@ -123,7 +132,12 @@ async fn main() -> Result<(), Error> {
             debug!("cooldown reached");
             drop(last_refresh); // prevent deadlock
             last_refresh_setter.send(Instant::now())?;
-            refresh(&refresh_tx).await?;
+            if refresh(&refresh_tx).await? && wait_ms > 0 {
+              // if config changed, we should wait for a while before finishing this invocation
+              debug!("config changed, wait for {}ms", wait_ms);
+              sleep(Duration::from_millis(wait_ms)).await;
+              debug!("wait done");
+            }
           }
         }
       }
@@ -164,7 +178,8 @@ fn parse_env<T: FromStr + Display + Copy>(name: &str, default: T) -> T {
   v
 }
 
-async fn refresh(refresh_tx: &mpsc::Sender<mpsc::Sender<()>>) -> Result<(), Error> {
+/// Return `Ok(true)` if config changed.
+async fn refresh(refresh_tx: &mpsc::Sender<mpsc::Sender<()>>) -> Result<bool> {
   let (changed_tx, mut changed_rx) = mpsc::channel::<()>(1);
   refresh_tx.send(changed_tx).await?;
   let mut changed = false;
@@ -175,5 +190,5 @@ async fn refresh(refresh_tx: &mpsc::Sender<mpsc::Sender<()>>) -> Result<(), Erro
   // now changed_rx.recv() returns None, meaning all changed_tx are dropped and the refresh is done
   debug!(changed, "refresh done: {}ms", now.elapsed().as_millis());
 
-  Ok(())
+  Ok(changed)
 }
