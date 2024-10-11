@@ -1,6 +1,6 @@
-# Springboot with AWS Lambda Web Adapter
+# Spring Boot with AWS Lambda Web Adapter
 
-This example shows how to use this project with a springboot application and [AWS Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter).
+This example shows how to use this project with a Spring Boot application and [AWS Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter), with [Lambda SnapStart](https://docs.aws.amazon.com/lambda/latest/dg/snapstart.html) enabled.
 
 ## Caveats
 
