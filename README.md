@@ -59,6 +59,9 @@ This feature requires runtime api proxy to realize, so you have to modify your h
   - The cooldown in milliseconds before the adapter refresh the configuration again.
   - If you want your configuration to be applied as soon as possible, reduce this value. If you want to reduce the number of requests to the origin server, increase this value.
   - Default: `0`.
+- `AWS_LAMBDA_NACOS_ADAPTER_WAIT_MS`
+  - The time in milliseconds that the adapter waits for the handler function to apply the updated configuration, before finishing the invocation.
+  - Default: `0`.
 
 ### Synchronous Update
 
@@ -71,6 +74,9 @@ This feature requires runtime api proxy to realize, so you have to modify your h
 - `AWS_LAMBDA_NACOS_ADAPTER_SYNC_COOLDOWN_MS`
   - The cooldown in milliseconds before the adapter refresh the configuration again for synchronous update.
   - This should be no less than `AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS`.
+  - Default: `0`.
+- `AWS_LAMBDA_NACOS_ADAPTER_SYNC_WAIT_MS`
+  - The time in milliseconds that the adapter waits for the handler function to apply the updated configuration, before invoking the handler function.
   - Default: `0`.
 
 ### Misc
@@ -112,6 +118,8 @@ In the examples above, since the cooldown for synchronous update is much longer 
 
 ## How It Works
 
+### Sequence Diagram
+
 ```mermaid
 sequenceDiagram
   participant L as AWS Lambda Service
@@ -134,16 +142,37 @@ sequenceDiagram
       A-->>S: Get latest config <br/> (if AWS_LAMBDA_NACOS_ADAPTER_SYNC_COOLDOWN_MS is reached)
       A-->>C: Notify the config change (if the config is changed)
       A-->>A: Wait for the configuration to be applied <br/> (if the config is changed)
+      A-->>A: Wait for AWS_LAMBDA_NACOS_ADAPTER_WAIT_MS <br/> (if the config is changed)
       A->>C: Invoke the handler function
     and Asynchronous update
       L->>A: Next invocation (via AWS Lambda's Extension API)
       A-->>S: Get latest config <br/> (if AWS_LAMBDA_NACOS_ADAPTER_COOLDOWN_MS is reached <br/> and not updated by synchronous update)
       A-->>C: Notify the config change (if the config is changed)
       A-->>A: Wait for the configuration to be applied <br/> (if the config is changed)
+      A-->>A: Wait for AWS_LAMBDA_NACOS_ADAPTER_SYNC_WAIT_MS <br/> (if the config is changed)
       A->>L: End of this invocation (via AWS Lambda's Extension API)
     end
   end
 ```
+
+### How Does This Know the Configuration is Applied in the Handler Function?
+
+The following sequence diagram shows how the Nacos client fetches the initial configuration, listens to the config changes, and fetches the updated configuration.
+
+```mermaid
+sequenceDiagram
+  participant C as Nacos Client
+  participant S as Nacos Server
+  C->>S: Fetch the initial configuration <br/> (ConfigQueryRequest with dataId & group & tenant)
+  C->>S: Start listening to config changes with the initial md5 <br/> (ConfigBatchListenRequest with dataId & group & tenant & md5)
+  S->>C: Notify the config change <br/> (ConfigChangeNotifyRequest with dataId & group & tenant)
+  C->>S: Fetch the updated configuration <br/> (ConfigQueryRequest with dataId & group & tenant)
+  C->>S: Start listening to config changes with the updated md5 <br/> (ConfigBatchListenRequest with dataId & group & tenant & md5)
+```
+
+No matter in synchronous or asynchronous update, after the adapter notified the handler function with the updated configuration, the adapter will wait until a subsequent `ConfigBatchListenRequest` is sent from the handler function with the updated md5.
+
+This mechanism ensures that the handler function has applied the updated configuration. However, if you are using some framework like Spring Boot, your application may not reload the configuration immediately after the configuration file is updated. In this case you should configure `AWS_LAMBDA_NACOS_ADAPTER_WAIT_MS` and/or `AWS_LAMBDA_NACOS_ADAPTER_SYNC_WAIT_MS` to wait for the application to reload the configuration.
 
 ## Credits
 
