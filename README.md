@@ -181,6 +181,8 @@ No matter in synchronous or asynchronous update, after the adapter notified the 
 
 This mechanism ensures that the handler function has applied the updated configuration. However, if you are using some framework like Spring Boot, your application may not reload the configuration immediately after the configuration file is updated. In this case you should configure `AWS_LAMBDA_NACOS_ADAPTER_WAIT_MS` and/or `AWS_LAMBDA_NACOS_ADAPTER_SYNC_WAIT_MS` to wait for the application to reload the configuration.
 
+Besides, since we can't distinguish the sender of the `ConfigBatchListenRequest`, you can only have one Nacos client in your handler function, otherwise this checking mechanism won't work.
+
 ## Credits
 
 This project references many code snippets from [nacos-group/r-nacos](https://github.com/nacos-group/r-nacos/).
