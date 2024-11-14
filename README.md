@@ -1,4 +1,4 @@
-# AWS Lambda Nacos Adapter
+# Nacos Adapter Demo on AWS Lambda
 
 Let your AWS Lambda functions listen to your configuration changes on Nacos. Supports both Nacos v1 (HTTP) and Nacos v2 (gRPC).
 
